@@ -1,10 +1,15 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+from collections import defaultdict
+
 import torch
 import torchvision
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.segmentation_mask import SegmentationMask
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
+from maskrcnn_benchmark.structures.census import CensusNameColKeypoints
+from maskrcnn_benchmark.structures.census import CensusOccupationColKeypoints
+from maskrcnn_benchmark.structures.census import CensusVeteranColKeypoints
 
 
 min_keypoints_per_image = 10
@@ -56,6 +61,15 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
 
         self.categories = {cat['id']: cat['name'] for cat in self.coco.cats.values()}
 
+        if 'name_col' in self.categories and 'keypoints' in self.coco.cats.values()[0]:
+            self.rev_categories = {cat['name']: cat['id'] for cat in self.coco.cats.values()}
+            self.keypoints = {cat['id']: cat['keypoints'] for cat in self.coco.cats.values()}
+            self.skeletons = {cat['id']: cat['skeleton'] for cat in self.coco.cats.values()}
+
+            CensusNameColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['name_col']]
+            CensusOccupationColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['occupation_col']]
+            CensusVeteranColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['veteran_col']]
+
         self.json_category_id_to_contiguous_id = {
             v: i + 1 for i, v in enumerate(self.coco.getCatIds())
         }
@@ -87,8 +101,39 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             target.add_field("masks", masks)
 
         if anno and "keypoints" in anno[0]:
-            keypoints = [obj["keypoints"] for obj in anno]
-            keypoints = PersonKeypoints(keypoints, img.size)
+            # NOTE: need to padd keypoints
+            lens = [len(x["keypoints"]) for x in anno]
+            max_len = max(lens)
+            #print('max len', max_len)
+            #keypoints = [obj["keypoints"] for obj in anno]
+            keypoints = defaultdict(list)
+            for x in anno:
+                keypoint = x["keypoints"]
+                cat_id = x["category_id"]
+                keypoints[cat_id].append(keypoint)
+                
+                #diff = max_len - len(keypoint)
+                #keypoints.append(keypoint + ([0] * diff))
+
+            '''
+            nam_kps = None
+            occ_kps = None
+            vet_kps = None
+            keypoints = {}
+            for cat_id, keypoint in keypoints.items():
+                label = self.categories[cat_id]
+                if label == 'name_col':
+                    nam_kps = CensusNameColKeypoints(keypoint, img.size)
+                    keypoints[cat_id] = nam_kps
+                elif label == 'occupation_col':
+                    occ_kps = CensusOccupationColKeypoints(keypoint, img.size)
+                    keypoints[cat_id] = occ_kps
+                elif label == 'veteran_col':
+                    vet_kps = CensusVeteranColKeypoints(keypoint, img.size)
+                    keypoints[cat_id] = vet_kps
+
+            '''
+            keypoints =  CensusNameColKeypoints(keypoint, img.size)
             target.add_field("keypoints", keypoints)
 
         target = target.clip_to_image(remove_empty=True)

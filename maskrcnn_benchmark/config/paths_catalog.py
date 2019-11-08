@@ -7,6 +7,66 @@ from copy import deepcopy
 class DatasetCatalog(object):
     DATA_DIR = "datasets"
     DATASETS = {
+        "census_coco_kps_overfit": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/keypoints/test_coco_result",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/keypoints/test_coco_result/annotations.json"
+        },
+         "census_coco_overfit": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/overfit_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/overfit_coco/annotations.json"
+        },
+        "census_coco_train": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_train_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_train_coco/annotations.json"
+        },
+        "census_coco_names_val": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_val_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_val_just_names_coco/annotations.json"
+        },
+        "census_coco_names_test": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_test_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_test_just_names_coco/annotations.json"
+        },
+         "census_coco_names_train": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_train_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_train_just_names_coco/annotations.json"
+        },
+        "census_coco_val": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_val_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_val_coco/annotations.json"
+        },
+        "census_coco_test": {
+            "img_dir":  "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_test_coco",
+            "ann_file": "/home/masaki/shared_data/census/census_1930/merged_random_and_hand_picked_data_test_coco/annotations.json"
+        },
+        "death_nosfr_coco_train": {
+            "img_dir":  "nosfr/combined_coco/",
+            "ann_file": "nosfr/combined_coco/annotations.json"
+        },
+         "death_e2e_coco_train": {
+            "img_dir": "death_e2e/train_coco",
+            "ann_file": "death_e2e/train_coco/annotations.json"
+        },
+        "death_e2e_coco_val": {
+            "img_dir": "death_e2e/val_coco",
+            "ann_file": "death_e2e/val_coco/annotations.json"
+        },
+        "sfr_coco_train": {
+            "img_dir": "sfr/sfr_coco_train",
+            "ann_file": "sfr/sfr_coco_train/annotations.json"
+        },
+         "sfr_coco_val": {
+            "img_dir": "sfr/sfr_coco_val",
+            "ann_file": "sfr/sfr_coco_val/annotations.json"
+        },
+         "coco_test": {
+            "img_dir": "test/coco_test_output",
+            "ann_file": "test/coco_test_output/annotations.json"
+        },
+        "death_coco_train": {
+            "img_dir": "death/",
+            "ann_file": "death/annotations.json"
+        },
         "coco_2017_train": {
             "img_dir": "coco/train2017",
             "ann_file": "coco/annotations/instances_train2017.json"
