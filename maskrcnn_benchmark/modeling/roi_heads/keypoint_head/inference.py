@@ -9,9 +9,13 @@ class KeypointPostProcessor(nn.Module):
 
     def forward(self, x, boxes):
         mask_prob = x
+        N, K, H, W = x.shape
+        keypoint_logits = x.view(N * K, H * W)
+        keypoint_probs, keypoint_prob_idxs = torch.max(nn.functional.softmax(keypoint_logits, dim=1), 1)
 
         scores = None
         if self.keypointer:
+            print('keypointing')
             mask_prob, scores = self.keypointer(x, boxes)
 
         assert len(boxes) == 1, "Only non-batched inference supported for now"
@@ -27,6 +31,10 @@ class KeypointPostProcessor(nn.Module):
             prob = PersonKeypoints(prob, box.size)
             prob.add_field("logits", score)
             bbox.add_field("keypoints", prob)
+            bbox.add_field("keypoint_probs", keypoint_probs)
+            bbox.add_field("keypoint_prob_idxs", keypoint_prob_idxs)
+            print("keypoint probs", keypoint_probs, keypoint_probs.shape)
+            print("keypoint idxs", keypoint_prob_idxs, keypoint_prob_idxs.shape)
             results.append(bbox)
 
         return results

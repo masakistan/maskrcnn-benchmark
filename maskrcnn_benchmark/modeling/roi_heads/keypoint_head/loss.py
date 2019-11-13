@@ -72,11 +72,14 @@ class KeypointRCNNLossComputation(object):
         # NB: need to clamp the indices because we can have a single
         # GT in the image, and matched_idxs can be -2, which goes
         # out of bounds
+        print('matched', matched_idxs)
         matched_targets = target[matched_idxs.clamp(min=0)]
         matched_targets.add_field("matched_idxs", matched_idxs)
         return matched_targets
 
     def prepare_targets(self, proposals, targets):
+        #print('prepare proposals', proposals)
+        #print('prepare targets', targets)
         labels = []
         keypoints = []
         for proposals_per_image, targets_per_image in zip(proposals, targets):
@@ -120,6 +123,8 @@ class KeypointRCNNLossComputation(object):
         """
 
         labels, keypoints = self.prepare_targets(proposals, targets)
+        print("labels", labels)
+        print("keypoints", keypoints)
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
 
         proposals = list(proposals)
@@ -142,20 +147,26 @@ class KeypointRCNNLossComputation(object):
         self._proposals = proposals
         return proposals
 
-    def __call__(self, proposals, keypoint_logits):
+    def __call__(self, proposals, keypoint_logits, obj_logits):
         heatmaps = []
         valid = []
+        valid_one_hot = []
         for proposals_per_image in proposals:
             kp = proposals_per_image.get_field("keypoints")
             heatmaps_per_image, valid_per_image = project_keypoints_to_heatmap(
                 kp, proposals_per_image, self.discretization_size
             )
+            print(valid_per_image)
             heatmaps.append(heatmaps_per_image.view(-1))
             valid.append(valid_per_image.view(-1))
+            valid_one_hot.append(valid_per_image.view(-1))
 
         keypoint_targets = cat(heatmaps, dim=0)
         valid = cat(valid, dim=0).to(dtype=torch.bool)
+        valid_one_hot = cat(valid_one_hot, dim=0)
+        print('valid', valid, valid.shape)
         valid = torch.nonzero(valid).squeeze(1)
+        print('valid', valid, valid.shape)
 
         # torch.mean (in binary_cross_entropy_with_logits) does'nt
         # accept empty tensors, so handle it sepaartely
@@ -163,10 +174,23 @@ class KeypointRCNNLossComputation(object):
             return keypoint_logits.sum() * 0
 
         N, K, H, W = keypoint_logits.shape
+        #print('log shape:', keypoint_logits.shape)
         keypoint_logits = keypoint_logits.view(N * K, H * W)
+        print('logits', keypoint_logits[0])
+        print('target', keypoint_targets[0])
+        print('val', keypoint_logits)
+        print(keypoint_logits[valid])
+        #print('log shape:', keypoint_logits.shape)
+        #print('log:', keypoint_logits[valid].shape)
+        #print('log:', keypoint_logits[valid])
+        #print('tar:', keypoint_targets[valid].shape)
+        #print('tar:', keypoint_targets[valid])
+        print('obj', obj_logits.shape)
+        print('val', valid_one_hot.shape)
 
+        objectness_loss = F.cross_entropy(obj_logits, valid_one_hot)
         keypoint_loss = F.cross_entropy(keypoint_logits[valid], keypoint_targets[valid])
-        return keypoint_loss
+        return keypoint_loss, objectness_loss
 
 
 def make_roi_keypoint_loss_evaluator(cfg):

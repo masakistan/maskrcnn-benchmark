@@ -121,6 +121,7 @@ class BoxList(object):
         # bbox._copy_extra_fields(self)
         for k, v in self.extra_fields.items():
             if not isinstance(v, torch.Tensor):
+                #print('resizing', k, type(v))
                 v = v.resize(size, *args, **kwargs)
             bbox.add_field(k, v)
 
@@ -205,6 +206,7 @@ class BoxList(object):
     def __getitem__(self, item):
         bbox = BoxList(self.bbox[item], self.size, self.mode)
         for k, v in self.extra_fields.items():
+            print('getitem', k, v, item.type(), item, v[item])
             bbox.add_field(k, v[item])
         return bbox
 
@@ -219,7 +221,9 @@ class BoxList(object):
         self.bbox[:, 3].clamp_(min=0, max=self.size[1] - TO_REMOVE)
         if remove_empty:
             box = self.bbox
+            print('box', box)
             keep = (box[:, 3] > box[:, 1]) & (box[:, 2] > box[:, 0])
+            print('keep', keep)
             return self[keep]
         return self
 

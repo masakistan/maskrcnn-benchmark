@@ -1,23 +1,56 @@
 import torch
+from itertools import compress
 
 
 # transpose
 FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
 
+
+class KeypointsList(object):
+    def __init__(self, keypoints):
+        self.keypoints = keypoints
+
+    def __getitem__(self, item):
+        print("type", type(item), item.type(), item.type() == torch.BoolTensor, item.type() is torch.BoolTensor, isinstance(item, torch.BoolTensor))
+        if isinstance(item, torch.BoolTensor) or isinstance(item, torch.cuda.BoolTensor):
+            ret = type(self)(list(compress(self.keypoints, item)))
+        elif isinstance(item, torch.cuda.LongTensor) or isinstance(item, torch.LongTensor):
+            ret = []
+            for i in item:
+                ret.append(self.keypoints[i])
+            ret = type(self)(ret)
+        else:
+            print("unknown item type:", type(item), item)
+            
+        print('ret', ret)
+        return ret
+
+    def resize(self, size, *args, **kwargs):
+        return type(self)([x.resize(size, *args, **kwargs) for x in self.keypoints])
+
+    def __repr__(self):
+        s = "KeypointsList(num_keypoints={})".format(len(self.keypoints))
+        return s
+
+    
 class Keypoints(object):
     def __init__(self, keypoints, size, mode=None):
         # FIXME remove check once we have better integration with device
         # in my version this would consistently return a CPU tensor
+        #print(keypoints)
         device = keypoints.device if isinstance(keypoints, torch.Tensor) else torch.device('cpu')
         keypoints = torch.as_tensor(keypoints, dtype=torch.float32, device=device)
         num_keypoints = keypoints.shape[0]
+        #print("num keypoints", num_keypoints)
+        #print("keypoints shape", keypoints.shape)
         if num_keypoints:
             keypoints = keypoints.view(num_keypoints, -1, 3)
         
         # TODO should I split them?
         # self.visibility = keypoints[..., 2]
         self.keypoints = keypoints# [..., :2]
+        #print("self keypoints", self.keypoints.shape)
 
         self.size = size
         self.mode = mode
@@ -30,8 +63,14 @@ class Keypoints(object):
         ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(size, self.size))
         ratio_w, ratio_h = ratios
         resized_data = self.keypoints.clone()
+        #print('size', size, self.size)
+        #print('rations', ratio_w, ratio_h)
+        #print('w before', resized_data[..., 0])
+        #print('w before', resized_data[..., 1])
         resized_data[..., 0] *= ratio_w
         resized_data[..., 1] *= ratio_h
+        #print('w after', resized_data[..., 0])
+        #print('w after', resized_data[..., 1])
         keypoints = type(self)(resized_data, size, self.mode)
         for k, v in self.extra_fields.items():
             keypoints.add_field(k, v)
@@ -152,6 +191,9 @@ PersonKeypoints.CONNECTIONS = kp_connections(PersonKeypoints.NAMES)
 
 # TODO make this nicer, this is a direct translation from C2 (but removing the inner loop)
 def keypoints_to_heat_map(keypoints, rois, heatmap_size):
+    #print('keypionts heat map', keypoints[0], keypoints.shape)
+    #print('heatmap_size', heatmap_size)
+    #print('rois', rois, rois.shape)
     if rois.numel() == 0:
         return rois.new().long(), rois.new().long()
     offset_x = rois[:, 0]
@@ -166,14 +208,23 @@ def keypoints_to_heat_map(keypoints, rois, heatmap_size):
 
     x = keypoints[..., 0]
     y = keypoints[..., 1]
+    #print('x', x)
+    #print('y', y)
+    #print('rois 2', rois[:, 2])
+    #print('rois 3', rois[:, 3])
 
     x_boundary_inds = x == rois[:, 2][:, None]
     y_boundary_inds = y == rois[:, 3][:, None]
+    #print('x boundary', x_boundary_inds)
+    #print('y boundary', y_boundary_inds)
 
     x = (x - offset_x) * scale_x
     x = x.floor().long()
     y = (y - offset_y) * scale_y
     y = y.floor().long()
+
+    #print('scaled x', x)
+    #print('scaled y', y)
     
     x[x_boundary_inds] = heatmap_size - 1
     y[y_boundary_inds] = heatmap_size - 1
@@ -184,5 +235,8 @@ def keypoints_to_heat_map(keypoints, rois, heatmap_size):
 
     lin_ind = y * heatmap_size + x
     heatmaps = lin_ind * valid
+
+    #print('heatmaps', heatmaps, heatmaps.shape)
+    #print('valid', valid)
 
     return heatmaps, valid

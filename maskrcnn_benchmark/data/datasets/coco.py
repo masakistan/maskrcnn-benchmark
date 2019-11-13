@@ -5,6 +5,7 @@ import torch
 import torchvision
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
+from maskrcnn_benchmark.structures.keypoint import KeypointsList
 from maskrcnn_benchmark.structures.segmentation_mask import SegmentationMask
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
 from maskrcnn_benchmark.structures.census import CensusNameColKeypoints
@@ -60,14 +61,28 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             self.ids = ids
 
         self.categories = {cat['id']: cat['name'] for cat in self.coco.cats.values()}
+        self.rev_categories = {cat['name']: cat['id'] for cat in self.coco.cats.values()}
 
-        if 'name_col' in self.categories and 'keypoints' in self.coco.cats.values()[0]:
-            self.rev_categories = {cat['name']: cat['id'] for cat in self.coco.cats.values()}
-            self.keypoints = {cat['id']: cat['keypoints'] for cat in self.coco.cats.values()}
-            self.skeletons = {cat['id']: cat['skeleton'] for cat in self.coco.cats.values()}
+        self.keypoints = {}
+        self.skeletons = {}
+        for cat in self.coco.cats.values():
+            if 'keypoints' in cat:
+                self.keypoints[cat['id']] = cat['keypoints']
+                self.skeletons[cat['id']] = cat['skeleton']
 
+        self.keypoint_formats = {
+            'name_col': CensusNameColKeypoints,
+            'occupation_col': CensusOccupationColKeypoints,
+            'veteran_col': CensusVeteranColKeypoints,
+        }
+
+        #print('keypoints:', self.keypoints)
+        if self.rev_categories['name_col'] in self.keypoints:
+            #print("creating name col keypoints")
             CensusNameColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['name_col']]
+        if self.rev_categories['occupation_col'] in self.keypoints:
             CensusOccupationColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['occupation_col']]
+        if self.rev_categories['veteran_col'] in self.keypoints:
             CensusVeteranColKeypoints.CONNECTIONS = self.skeletons[self.rev_categories['veteran_col']]
 
         self.json_category_id_to_contiguous_id = {
@@ -106,35 +121,15 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             max_len = max(lens)
             #print('max len', max_len)
             #keypoints = [obj["keypoints"] for obj in anno]
-            keypoints = defaultdict(list)
+            keypoints = []
             for x in anno:
                 keypoint = x["keypoints"]
                 cat_id = x["category_id"]
-                keypoints[cat_id].append(keypoint)
+                keypoints.append(
+                    self.keypoint_formats[self.categories[cat_id]]([keypoint], img.size)
+                )
                 
-                #diff = max_len - len(keypoint)
-                #keypoints.append(keypoint + ([0] * diff))
-
-            '''
-            nam_kps = None
-            occ_kps = None
-            vet_kps = None
-            keypoints = {}
-            for cat_id, keypoint in keypoints.items():
-                label = self.categories[cat_id]
-                if label == 'name_col':
-                    nam_kps = CensusNameColKeypoints(keypoint, img.size)
-                    keypoints[cat_id] = nam_kps
-                elif label == 'occupation_col':
-                    occ_kps = CensusOccupationColKeypoints(keypoint, img.size)
-                    keypoints[cat_id] = occ_kps
-                elif label == 'veteran_col':
-                    vet_kps = CensusVeteranColKeypoints(keypoint, img.size)
-                    keypoints[cat_id] = vet_kps
-
-            '''
-            keypoints =  CensusNameColKeypoints(keypoint, img.size)
-            target.add_field("keypoints", keypoints)
+            target.add_field("keypoints", KeypointsList(keypoints))
 
         target = target.clip_to_image(remove_empty=True)
 
