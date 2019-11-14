@@ -8,33 +8,6 @@ FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
 
 
-class KeypointsList(object):
-    def __init__(self, keypoints):
-        self.keypoints = keypoints
-
-    def __getitem__(self, item):
-        print("type", type(item), item.type(), item.type() == torch.BoolTensor, item.type() is torch.BoolTensor, isinstance(item, torch.BoolTensor))
-        if isinstance(item, torch.BoolTensor) or isinstance(item, torch.cuda.BoolTensor):
-            ret = type(self)(list(compress(self.keypoints, item)))
-        elif isinstance(item, torch.cuda.LongTensor) or isinstance(item, torch.LongTensor):
-            ret = []
-            for i in item:
-                ret.append(self.keypoints[i])
-            ret = type(self)(ret)
-        else:
-            print("unknown item type:", type(item), item)
-            
-        #print('ret', ret)
-        return ret
-
-    def resize(self, size, *args, **kwargs):
-        return type(self)([x.resize(size, *args, **kwargs) for x in self.keypoints])
-
-    def __repr__(self):
-        s = "KeypointsList(num_keypoints={})".format(len(self.keypoints))
-        return s
-
-    
 class Keypoints(object):
     def __init__(self, keypoints, size, offsets, mode=None):
         # FIXME remove check once we have better integration with device
@@ -47,13 +20,14 @@ class Keypoints(object):
 
         #print(keypoints)
         keypoints = torch.as_tensor(keypoints, dtype=torch.float32, device=device)
+        
         self.offsets = offsets
         num_keypoints = keypoints.shape[0]
         #print("num keypoints", num_keypoints)
         #print("keypoints shape", keypoints.shape)
         if num_keypoints:
-            keypoints = keypoints.view(-1, 3)
-        #print('loaded keypoints', keypoints, keypoints.shape)
+            keypoints = keypoints.view(-1, 11)
+        #print('loaded keypoints', keypoints.shape)
         #assert keypoints.shape[0] + 1 == len(offsets), "Keypoints and offsets oar of different length {} {}".format(keypoints.shape[0], len(offsets))
         
         # TODO should I split them?
@@ -78,7 +52,17 @@ class Keypoints(object):
         #print('w before', resized_data[..., 0])
         #print('w before', resized_data[..., 1])
         resized_data[..., 0] *= ratio_w
+        resized_data[..., 3] *= ratio_w
+        resized_data[..., 5] *= ratio_w
+        resized_data[..., 7] *= ratio_w
+        resized_data[..., 9] *= ratio_w
+        
         resized_data[..., 1] *= ratio_h
+        resized_data[..., 4] *= ratio_w
+        resized_data[..., 6] *= ratio_w
+        resized_data[..., 8] *= ratio_w
+        resized_data[..., 10] *= ratio_w
+
         #print('w after', resized_data[..., 0])
         #print('w after', resized_data[..., 1])
         keypoints = type(self)(resized_data, size, self.offsets, self.mode)

@@ -1,5 +1,6 @@
 import torch
 from torch.nn import functional as F
+torch.set_printoptions(profile="full")
 
 from maskrcnn_benchmark.modeling.matcher import Matcher
 
@@ -200,6 +201,11 @@ class KeypointRCNNLossComputation(object):
         #print('obj', obj_logits.shape)
         #print('val', valid_one_hot)
         #print('val', valid_one_hot.shape)
+        #print(proposals)
+        #print(obj_logits.shape)
+        #print(valid_one_hot.shape)
+        #print(F.softmax(obj_logits, dim = 1))
+        #print(valid_one_hot)
 
         objectness_loss = F.cross_entropy(obj_logits, valid_one_hot)
         keypoint_loss = F.cross_entropy(keypoint_logits[valid], keypoint_targets[valid])

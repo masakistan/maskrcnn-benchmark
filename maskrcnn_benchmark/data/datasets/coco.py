@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 from collections import defaultdict
+import numpy as np
 
 import torch
 import torchvision
@@ -132,31 +133,20 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             keypoints = []
             offsets = [0]
             for i, obj in enumerate(anno):
+                #print(obj)
                 keypoint = obj["keypoints"]
                 cat_id = obj["category_id"]
-                #print('keypiont', keypoint)
+                #print('keypoint len', len(keypoint))
                 
-                padded_keypoint = [0] * self.n_kp_classes * 3
+                padded_keypoint = [0] * self.n_kp_classes * 11
                 #print('padded len', len(padded_keypoint))
                 start, end = self.label_offsets[cat_id]
                 #print('start, end', start, end)
-                padded_keypoint[start * 3 :end * 3] = keypoint
+                padded_keypoint[start * 11 : end * 11] = keypoint
                 #print(len(padded_keypoint))
-                
-                offsets.append(offsets[i - 1] + len(padded_keypoint) // 3)
+
+                offsets.append(offsets[i - 1] + len(padded_keypoint) // 11)
                 keypoints.append(padded_keypoint)
-            #cats = [obj["category_id"] for obj in anno]
-            #offsets = [len(obj["keypoints"]) // 3 for obj in anno]
-            #offsets = [0] + offsets
-            #print(keypoints)
-            #print('offsets', offsets)
-            #keypoints = []
-            #for x in anno:
-            #    keypoint = x["keypoints"]
-            #    cat_id = x["category_id"]
-            #    keypoints.append(
-            #        self.keypoint_formats[self.categories[cat_id]]([keypoint], img.size)
-            #    )
                 
             target.add_field("keypoints", Keypoints(keypoints, img.size, offsets))
 

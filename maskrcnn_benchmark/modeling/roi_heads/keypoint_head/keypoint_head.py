@@ -43,7 +43,7 @@ class ROIKeypointHead(torch.nn.Module):
             with torch.no_grad():
                 proposals = self.loss_evaluator.subsample(proposals, targets)
 
-        #print('proposals subsampled', proposals)
+        print('proposals subsampled', proposals)
         x = self.feature_extractor(features, proposals)
         #rint('x', x.shape)
         kp_logits = self.predictor(x)
@@ -52,7 +52,7 @@ class ROIKeypointHead(torch.nn.Module):
         #rint('obj', obj_logits.shape)
 
         if not self.training:
-            result = self.post_processor(kp_logits, proposals)
+            result = self.post_processor(kp_logits, obj_logtis, proposals)
             return x, result, {}
 
         loss_kp, loss_kp_obj = self.loss_evaluator(proposals, kp_logits, obj_logits)

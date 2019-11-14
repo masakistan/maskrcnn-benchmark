@@ -7,7 +7,7 @@ class KeypointPostProcessor(nn.Module):
         super(KeypointPostProcessor, self).__init__()
         self.keypointer = keypointer
 
-    def forward(self, x, boxes):
+    def forward(self, x, obj_logits, boxes):
         mask_prob = x
         N, K, H, W = x.shape
         keypoint_logits = x.view(N * K, H * W)
