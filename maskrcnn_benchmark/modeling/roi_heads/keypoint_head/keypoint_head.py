@@ -36,21 +36,20 @@ class ROIKeypointHead(torch.nn.Module):
                 head. During testing, returns an empty dict.
         """
         #print('features', features)
-        print('proposals', proposals)
+        #print('proposals', proposals)
         #print('targets', targets)
         #print('targets before', targets[0].get_field('keypoints').keypoints)
         if self.training:
             with torch.no_grad():
                 proposals = self.loss_evaluator.subsample(proposals, targets)
 
-        #print('targets after', targets[0].get_field('keypoints').keypoints)
-        print('proposals', proposals)
+        #print('proposals subsampled', proposals)
         x = self.feature_extractor(features, proposals)
-        print('x', x.shape)
+        #rint('x', x.shape)
         kp_logits = self.predictor(x)
-        print('preds:', kp_logits.shape)
+        #rint('preds:', kp_logits.shape)
         obj_logits = self.objectness_predictor(x)
-        print('obj', obj_logits.shape)
+        #rint('obj', obj_logits.shape)
 
         if not self.training:
             result = self.post_processor(kp_logits, proposals)

@@ -5,7 +5,7 @@ import torch
 import torchvision
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
-from maskrcnn_benchmark.structures.keypoint import KeypointsList
+from maskrcnn_benchmark.structures.keypoint import Keypoints
 from maskrcnn_benchmark.structures.segmentation_mask import SegmentationMask
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
 from maskrcnn_benchmark.structures.census import CensusNameColKeypoints
@@ -65,11 +65,19 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
 
         self.keypoints = {}
         self.skeletons = {}
+        self.label_offsets = {}
+        cur_offset = 0
         for cat in self.coco.cats.values():
             if 'keypoints' in cat:
+                self.label_offsets[cat['id']] = (cur_offset, cur_offset + len(cat['keypoints']))
+                cur_offset += len(cat['keypoints'])
                 self.keypoints[cat['id']] = cat['keypoints']
                 self.skeletons[cat['id']] = cat['skeleton']
+        self.n_kp_classes = cur_offset
+        print('n kp classes', self.n_kp_classes)
 
+        print('kps offsets for labels', self.label_offsets)
+        print('cur offset', cur_offset)
         self.keypoint_formats = {
             'name_col': CensusNameColKeypoints,
             'occupation_col': CensusOccupationColKeypoints,
@@ -122,14 +130,35 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             #print('max len', max_len)
             #keypoints = [obj["keypoints"] for obj in anno]
             keypoints = []
-            for x in anno:
-                keypoint = x["keypoints"]
-                cat_id = x["category_id"]
-                keypoints.append(
-                    self.keypoint_formats[self.categories[cat_id]]([keypoint], img.size)
-                )
+            offsets = [0]
+            for i, obj in enumerate(anno):
+                keypoint = obj["keypoints"]
+                cat_id = obj["category_id"]
+                #print('keypiont', keypoint)
                 
-            target.add_field("keypoints", KeypointsList(keypoints))
+                padded_keypoint = [0] * self.n_kp_classes * 3
+                #print('padded len', len(padded_keypoint))
+                start, end = self.label_offsets[cat_id]
+                #print('start, end', start, end)
+                padded_keypoint[start * 3 :end * 3] = keypoint
+                #print(len(padded_keypoint))
+                
+                offsets.append(offsets[i - 1] + len(padded_keypoint) // 3)
+                keypoints.append(padded_keypoint)
+            #cats = [obj["category_id"] for obj in anno]
+            #offsets = [len(obj["keypoints"]) // 3 for obj in anno]
+            #offsets = [0] + offsets
+            #print(keypoints)
+            #print('offsets', offsets)
+            #keypoints = []
+            #for x in anno:
+            #    keypoint = x["keypoints"]
+            #    cat_id = x["category_id"]
+            #    keypoints.append(
+            #        self.keypoint_formats[self.categories[cat_id]]([keypoint], img.size)
+            #    )
+                
+            target.add_field("keypoints", Keypoints(keypoints, img.size, offsets))
 
         target = target.clip_to_image(remove_empty=True)
 

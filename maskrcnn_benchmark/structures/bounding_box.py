@@ -206,7 +206,7 @@ class BoxList(object):
     def __getitem__(self, item):
         bbox = BoxList(self.bbox[item], self.size, self.mode)
         for k, v in self.extra_fields.items():
-            print('getitem', k, v, item.type(), item, v[item])
+            #print('getitem', k, v, item.type(), item, v[item])
             bbox.add_field(k, v[item])
         return bbox
 
@@ -221,9 +221,9 @@ class BoxList(object):
         self.bbox[:, 3].clamp_(min=0, max=self.size[1] - TO_REMOVE)
         if remove_empty:
             box = self.bbox
-            print('box', box)
+            #print('box', box)
             keep = (box[:, 3] > box[:, 1]) & (box[:, 2] > box[:, 0])
-            print('keep', keep)
+            #print('keep', keep)
             return self[keep]
         return self
 
@@ -262,9 +262,9 @@ class BoxList(object):
 if __name__ == "__main__":
     bbox = BoxList([[0, 0, 10, 10], [0, 0, 5, 5]], (10, 10))
     s_bbox = bbox.resize((5, 5))
-    print(s_bbox)
-    print(s_bbox.bbox)
+    #print(s_bbox)
+    #print(s_bbox.bbox)
 
     t_bbox = bbox.transpose(0)
-    print(t_bbox)
-    print(t_bbox.bbox)
+    #print(t_bbox)
+    #print(t_bbox.bbox)

@@ -1,5 +1,6 @@
 import torch
 from itertools import compress
+from maskrcnn_benchmark.modeling.utils import cat
 
 
 # transpose
@@ -23,7 +24,7 @@ class KeypointsList(object):
         else:
             print("unknown item type:", type(item), item)
             
-        print('ret', ret)
+        #print('ret', ret)
         return ret
 
     def resize(self, size, *args, **kwargs):
@@ -35,17 +36,25 @@ class KeypointsList(object):
 
     
 class Keypoints(object):
-    def __init__(self, keypoints, size, mode=None):
+    def __init__(self, keypoints, size, offsets, mode=None):
         # FIXME remove check once we have better integration with device
         # in my version this would consistently return a CPU tensor
         #print(keypoints)
         device = keypoints.device if isinstance(keypoints, torch.Tensor) else torch.device('cpu')
+        if isinstance(keypoints, list):
+            keypoints = [torch.as_tensor(x, dtype=torch.float32, device=device) for x in keypoints]
+            keypoints = cat(keypoints, dim=0)
+
+        #print(keypoints)
         keypoints = torch.as_tensor(keypoints, dtype=torch.float32, device=device)
+        self.offsets = offsets
         num_keypoints = keypoints.shape[0]
         #print("num keypoints", num_keypoints)
         #print("keypoints shape", keypoints.shape)
         if num_keypoints:
-            keypoints = keypoints.view(num_keypoints, -1, 3)
+            keypoints = keypoints.view(-1, 3)
+        #print('loaded keypoints', keypoints, keypoints.shape)
+        #assert keypoints.shape[0] + 1 == len(offsets), "Keypoints and offsets oar of different length {} {}".format(keypoints.shape[0], len(offsets))
         
         # TODO should I split them?
         # self.visibility = keypoints[..., 2]
@@ -60,6 +69,7 @@ class Keypoints(object):
         raise NotImplementedError()
 
     def resize(self, size, *args, **kwargs):
+        #print('resizing')
         ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(size, self.size))
         ratio_w, ratio_h = ratios
         resized_data = self.keypoints.clone()
@@ -71,7 +81,7 @@ class Keypoints(object):
         resized_data[..., 1] *= ratio_h
         #print('w after', resized_data[..., 0])
         #print('w after', resized_data[..., 1])
-        keypoints = type(self)(resized_data, size, self.mode)
+        keypoints = type(self)(resized_data, size, self.offsets, self.mode)
         for k, v in self.extra_fields.items():
             keypoints.add_field(k, v)
         return keypoints
@@ -92,21 +102,51 @@ class Keypoints(object):
         inds = flipped_data[..., 2] == 0
         flipped_data[inds] = 0
 
-        keypoints = type(self)(flipped_data, self.size, self.mode)
+        keypoints = type(self)(flipped_data, self.size, self.offsets, self.mode)
         for k, v in self.extra_fields.items():
             keypoints.add_field(k, v)
         return keypoints
 
     def to(self, *args, **kwargs):
-        keypoints = type(self)(self.keypoints.to(*args, **kwargs), self.size, self.mode)
+        keypoints = type(self)(self.keypoints.to(*args, **kwargs), self.size, self.offsets, self.mode)
         for k, v in self.extra_fields.items():
             if hasattr(v, "to"):
                 v = v.to(*args, **kwargs)
             keypoints.add_field(k, v)
         return keypoints
 
+    def keypoint_indices_and_offsets(self, idxs):
+        #print('idxs', idxs)
+        if isinstance(idxs, int):
+            idxs = [idxs]
+        elif isinstance(idxs, tuple):
+            print("WARNING: tuple may not work as intended {}".format(idxs))
+            idxs = [idxs[1]]
+            
+        if isinstance(idxs, torch.BoolTensor) or isinstance(idxs, torch.cuda.BoolTensor):
+            #print("getting bool")
+            ret = cat([torch.arange(self.offsets[i], self.offsets[i + 1]) for i, x in enumerate(idxs) if x], dim=0)
+            #new_offsets = [0] + [self.offsets[i + 1] - self.offsets[i] for i, x in enumerate(idxs) if x]
+            #print('bool:', ret, new_offsets)
+            new_offsets = [0]
+            for i, x in enumerate(idxs):
+                if x:
+                    new_offsets.append(new_offsets[-1] + self.offsets[i + 1] - self.offsets[i])
+        elif isinstance(idxs, list) or isinstance(idxs, torch.cuda.LongTensor) or isinstance(idxs, torch.LongTensor):
+            #print("getting index")
+            ret = cat([torch.arange(self.offsets[i], self.offsets[i + 1]) for i in idxs if i >= 0], dim=0)
+            new_offsets = [0]
+            for i in idxs:
+                if i >= 0:
+                    new_offsets.append(new_offsets[-1] + self.offsets[i + 1] - self.offsets[i])
+        #print('new offsets', new_offsets)
+
+        return ret, new_offsets
+ 
     def __getitem__(self, item):
-        keypoints = type(self)(self.keypoints[item], self.size, self.mode)
+        #print('item', item)
+        keypoint_idxs, new_offsets = self.keypoint_indices_and_offsets(item)
+        keypoints = type(self)(self.keypoints[keypoint_idxs], self.size, new_offsets, self.mode)
         for k, v in self.extra_fields.items():
             keypoints.add_field(k, v[item])
         return keypoints
@@ -119,9 +159,10 @@ class Keypoints(object):
 
     def __repr__(self):
         s = self.__class__.__name__ + '('
-        s += 'num_instances={}, '.format(len(self.keypoints))
+        s += 'num_instances={}, '.format(len(self.offsets) - 1)
         s += 'image_width={}, '.format(self.size[0])
-        s += 'image_height={})'.format(self.size[1])
+        s += 'image_height={}, '.format(self.size[1])
+        s += 'num_keypoints={})'.format(len(self.keypoints))
         return s
 
 
@@ -132,6 +173,73 @@ def _create_flip_indices(names, flip_map):
     flip_indices = [names.index(i) for i in flipped_names]
     return torch.tensor(flip_indices)
 
+
+# TODO make this nicer, this is a direct translation from C2 (but removing the inner loop)
+def keypoints_to_heat_map(keypoints, rois, heatmap_size):
+    #print('keypionts heat map', keypoints[0], keypoints.shape)
+    #print('heatmap_size', heatmap_size)
+    #print('rois', rois, rois.shape)
+    if rois.numel() == 0:
+        return rois.new().long(), rois.new().long()
+
+
+    heatmaps = []
+    valids = []
+    #print('keypoints', keypoints)
+    for i, (roi, keypoint) in enumerate(zip(rois, keypoints)):
+        offset_x = roi[0]
+        offset_y = roi[1]
+        scale_x = heatmap_size / (roi[2] - roi[0])
+        scale_y = heatmap_size / (roi[3] - roi[1])
+
+        offset_x = offset_x[None]
+        offset_y = offset_y[None]
+        scale_x = scale_x[None]
+        scale_y = scale_y[None]
+
+        #print('kps', keypoints.shape)
+        #print('roi', roi)
+        #print('keypoint'#, keypoint)
+        keypoint = keypoint.keypoints
+        #print('keypoint', keypoint.shape)
+        x = keypoint[..., 0]
+        y = keypoint[..., 1]
+        #print('x', x)
+        #print('y', y)
+        #print('rois 2', rois[:, 2])
+        #print('rois 3', rois[:, 3])
+        
+        x_boundary_inds = x == roi[2][None]
+        y_boundary_inds = y == roi[3][None]
+        #print('x boundary', x_boundary_inds)
+        #print('y boundary', y_boundary_inds)
+        
+        x = (x - offset_x) * scale_x
+        x = x.floor().long()
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+        
+        #print('scaled x', x)
+        #print('scaled y', y)
+        
+        x[x_boundary_inds] = heatmap_size - 1
+        y[y_boundary_inds] = heatmap_size - 1
+        
+        valid_loc = (x >= 0) & (y >= 0) & (x < heatmap_size) & (y < heatmap_size)
+        vis = keypoint[..., 2] > 0
+        valid = (valid_loc & vis).long()
+        
+        lin_ind = y * heatmap_size + x
+        heatmap = lin_ind * valid
+
+        heatmaps.append(heatmap)
+        valids.append(valid)
+    heatmaps = cat(heatmaps)
+    valids = cat(valids)
+    #print('heatmaps', heatmaps, heatmaps.shape)
+    #print('valid', valids, valids.shape)
+
+    return heatmaps, valids
 
 class PersonKeypoints(Keypoints):
     NAMES = [
@@ -188,55 +296,3 @@ def kp_connections(keypoints):
     return kp_lines
 PersonKeypoints.CONNECTIONS = kp_connections(PersonKeypoints.NAMES)
 
-
-# TODO make this nicer, this is a direct translation from C2 (but removing the inner loop)
-def keypoints_to_heat_map(keypoints, rois, heatmap_size):
-    #print('keypionts heat map', keypoints[0], keypoints.shape)
-    #print('heatmap_size', heatmap_size)
-    #print('rois', rois, rois.shape)
-    if rois.numel() == 0:
-        return rois.new().long(), rois.new().long()
-    offset_x = rois[:, 0]
-    offset_y = rois[:, 1]
-    scale_x = heatmap_size / (rois[:, 2] - rois[:, 0])
-    scale_y = heatmap_size / (rois[:, 3] - rois[:, 1])
-
-    offset_x = offset_x[:, None]
-    offset_y = offset_y[:, None]
-    scale_x = scale_x[:, None]
-    scale_y = scale_y[:, None]
-
-    x = keypoints[..., 0]
-    y = keypoints[..., 1]
-    #print('x', x)
-    #print('y', y)
-    #print('rois 2', rois[:, 2])
-    #print('rois 3', rois[:, 3])
-
-    x_boundary_inds = x == rois[:, 2][:, None]
-    y_boundary_inds = y == rois[:, 3][:, None]
-    #print('x boundary', x_boundary_inds)
-    #print('y boundary', y_boundary_inds)
-
-    x = (x - offset_x) * scale_x
-    x = x.floor().long()
-    y = (y - offset_y) * scale_y
-    y = y.floor().long()
-
-    #print('scaled x', x)
-    #print('scaled y', y)
-    
-    x[x_boundary_inds] = heatmap_size - 1
-    y[y_boundary_inds] = heatmap_size - 1
-
-    valid_loc = (x >= 0) & (y >= 0) & (x < heatmap_size) & (y < heatmap_size)
-    vis = keypoints[..., 2] > 0
-    valid = (valid_loc & vis).long()
-
-    lin_ind = y * heatmap_size + x
-    heatmaps = lin_ind * valid
-
-    #print('heatmaps', heatmaps, heatmaps.shape)
-    #print('valid', valid)
-
-    return heatmaps, valid
