@@ -218,7 +218,7 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         #print('kp heatmap', heatmap.shape)
 
         # NOTE: start corners 0
-        coord_heatmap = torch.zeros([nclasses, heatmap_size ** 2], dtype=torch.float, device=device)
+        coord_heatmap = torch.zeros([nclasses, 4, heatmap_size ** 2], dtype=torch.float, device=device)
         #print('0', coord_heatmap)
         x = keypoint[..., 3]
         y = keypoint[..., 4]
@@ -243,7 +243,8 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         y[y_max_boundary_inds] = heatmap_size - 1
         lin_ind = y * heatmap_size + x
         print('lin', lin_ind[validb])
-        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        print(coord_heatmap[validb][:,0].shape)
+        coord_heatmap[validb][:,0].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
 
         # NOTE: corner 1
         x = keypoint[..., 5]
@@ -265,7 +266,7 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         lin_ind = y * heatmap_size + x
         print('lin', lin_ind[validb])
         #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        coord_heatmap[validb][:,1].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
         #print('2', coord_heatmap)
 
         # NOTE: corner 2
@@ -288,7 +289,7 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         lin_ind = y * heatmap_size + x
         print('lin', lin_ind[validb])
         #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        coord_heatmap[validb][:,2].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
         #print('3', coord_heatmap)
 
 
@@ -312,7 +313,7 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         lin_ind = y * heatmap_size + x
         print('lin', lin_ind[validb])
         #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        coord_heatmap[validb][:,3].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
         #print('4', coord_heatmap)
 
         #print('coord', coord_heatmap.shape)

@@ -159,6 +159,7 @@ class KeypointRCNNLossComputation(object):
         valid = []
         valid_one_hot = []
         coord_heatmaps = []
+        print('logits', keypoint_logits.shape)
         N, K, H, W = keypoint_logits.shape
         #print('kp_logits', keypoint_logits.shape)
         #print('obj_ogits', obj_logits.shape)
@@ -194,7 +195,7 @@ class KeypointRCNNLossComputation(object):
 
         keypoint_logits = keypoint_logits.view(N * K, H * W)
         obj_logits = obj_logits.view(N * K, -1)
-        coord_activations = torch.sigmoid(coord_logits.view(N * K, H * W))
+        coord_activations = torch.sigmoid(coord_logits.view(N * K, 4, H * W))
         print('cact', coord_activations.shape)
 
         #print('kp_logits', keypoint_logits.shape)
