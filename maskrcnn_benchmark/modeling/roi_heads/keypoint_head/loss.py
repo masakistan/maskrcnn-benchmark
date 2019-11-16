@@ -12,13 +12,13 @@ from maskrcnn_benchmark.modeling.utils import cat
 from maskrcnn_benchmark.layers import smooth_l1_loss
 from maskrcnn_benchmark.structures.boxlist_ops import cat_boxlist
 
-from maskrcnn_benchmark.structures.keypoint import keypoints_to_heat_map
+from maskrcnn_benchmark.structures.keypoint import keypoints_to_heat_map, keypoints_to_heat_map_multi_point
 
 
-def project_keypoints_to_heatmap(keypoints, proposals, discretization_size):
+def project_keypoints_to_heatmap(keypoints, proposals, discretization_size, nclasses):
     proposals = proposals.convert("xyxy")
-    return keypoints_to_heat_map(
-        keypoints, proposals.bbox, discretization_size
+    return keypoints_to_heat_map_multi_point(
+        keypoints, proposals.bbox, discretization_size, nclasses
     )
 
 
@@ -153,27 +153,36 @@ class KeypointRCNNLossComputation(object):
         self._proposals = proposals
         return proposals
 
-    def __call__(self, proposals, keypoint_logits, obj_logits):
+    def __call__(self, proposals, keypoint_logits, obj_logits, coord_logits):
         #print('initial kp logits', keypoint_logits.shape)
         heatmaps = []
         valid = []
         valid_one_hot = []
+        coord_heatmaps = []
+        N, K, H, W = keypoint_logits.shape
+        #print('kp_logits', keypoint_logits.shape)
+        #print('obj_ogits', obj_logits.shape)
+        #print('coord_logits', coord_logits.shape)
         for proposals_per_image in proposals:
             kp = proposals_per_image.get_field("keypoints")
             #print('kp', kp)
-            heatmaps_per_image, valid_per_image = project_keypoints_to_heatmap(
-                kp, proposals_per_image, self.discretization_size
+            #print(kp.keypoints.shape)
+            #print(kp.keypoints[:,3:11].shape)
+            heatmaps_per_image, coord_heatmaps_per_image, valid_per_image = project_keypoints_to_heatmap(
+                kp, proposals_per_image, self.discretization_size, K
             )
+
             #print('valid per image', valid_per_image)
             heatmaps.append(heatmaps_per_image.view(-1))
             valid.append(valid_per_image.view(-1))
             valid_one_hot.append(valid_per_image.view(-1))
+            coord_heatmaps.append(coord_heatmaps_per_image.view(-1))
 
-
-        #print(valid)
         keypoint_targets = cat(heatmaps, dim=0)
         valid = cat(valid, dim=0).to(dtype=torch.bool)
         valid_one_hot = cat(valid_one_hot, dim=0)
+        coord_targets = cat(coord_heatmaps, dim=0)
+        print('coords_targets', coord_targets.shape)
         #print('valid', valid, valid.shape)
         valid = torch.nonzero(valid).squeeze(1)
         #print('valid', valid, valid.shape)
@@ -183,33 +192,19 @@ class KeypointRCNNLossComputation(object):
         if keypoint_targets.numel() == 0 or len(valid) == 0:
             return keypoint_logits.sum() * 0
 
-        N, K, H, W = keypoint_logits.shape
-        #print('log shape:', keypoint_logits.shape)
         keypoint_logits = keypoint_logits.view(N * K, H * W)
-        #print('logits', keypoint_logits.shape)
-        #print('target', keypoint_targets.shape)
-        #print('val', keypoint_logits)
-        #print(keypoint_logits[valid])
-        #print('log shape:', keypoint_logits.shape)
-        #print('log:', keypoint_logits[valid].shape)
-        #print('log:', keypoint_logits[valid])
-        #print('tar:', keypoint_targets[valid].shape)
-        #print('tar:', keypoint_targets[valid])
-        #print('obj', obj_logits.shape)
-        N, C, P = obj_logits.shape
-        obj_logits = obj_logits.view(N * C, P)
-        #print('obj', obj_logits.shape)
-        #print('val', valid_one_hot)
-        #print('val', valid_one_hot.shape)
-        #print(proposals)
-        #print(obj_logits.shape)
-        #print(valid_one_hot.shape)
-        #print(F.softmax(obj_logits, dim = 1))
-        #print(valid_one_hot)
+        obj_logits = obj_logits.view(N * K, -1)
+        coord_activations = torch.sigmoid(coord_logits.view(N * K, H * W))
+        print('cact', coord_activations.shape)
+
+        #print('kp_logits', keypoint_logits.shape)
+        #print('obj_ogits', obj_logits.shape)
+        #print('coord_logits', coord_logits.shape)
 
         objectness_loss = F.cross_entropy(obj_logits, valid_one_hot)
         keypoint_loss = F.cross_entropy(keypoint_logits[valid], keypoint_targets[valid])
-        return keypoint_loss, objectness_loss
+        coord_loss = F.binary_cross_entropy(coord_activations, coord_targets)
+        return keypoint_loss, objectness_loss, coord_loss
 
 
 def make_roi_keypoint_loss_evaluator(cfg):

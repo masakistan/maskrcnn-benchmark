@@ -19,6 +19,8 @@ class ROIKeypointHead(torch.nn.Module):
 
         self.objectness_predictor = make_keypoint_objectness_predictor(
             cfg, self.feature_extractor.out_channels)
+        self.coord_predictor = make_roi_keypoint_predictor(
+            cfg, self.feature_extractor.out_channels)
 
     def forward(self, features, proposals, targets=None):
         """
@@ -43,22 +45,26 @@ class ROIKeypointHead(torch.nn.Module):
             with torch.no_grad():
                 proposals = self.loss_evaluator.subsample(proposals, targets)
 
-        print('proposals subsampled', proposals)
+        #print('proposals subsampled', proposals)
         x = self.feature_extractor(features, proposals)
-        #rint('x', x.shape)
+        #print('x', x.shape)
         kp_logits = self.predictor(x)
+        coord_logits = self.coord_predictor(x)
         #rint('preds:', kp_logits.shape)
         obj_logits = self.objectness_predictor(x)
-        #rint('obj', obj_logits.shape)
+        #print('obj', obj_logits.shape)
 
         if not self.training:
-            result = self.post_processor(kp_logits, obj_logtis, proposals)
+            result = self.post_processor(kp_logits, obj_logtis, coord_logits, proposals)
             return x, result, {}
 
-        loss_kp, loss_kp_obj = self.loss_evaluator(proposals, kp_logits, obj_logits)
+        loss_kp, loss_kp_obj, loss_kp_coord = self.loss_evaluator(proposals, kp_logits, obj_logits, coord_logits)
 
-        return x, proposals, dict(loss_kp=loss_kp, loss_kp_obj=loss_kp_obj)
+        losses = dict(loss_kp=loss_kp, loss_kp_obj=loss_kp_obj, loss_kp_coord=loss_kp_coord)
+        print(losses)
 
+        return x, proposals, losses
+    
 
 def build_roi_keypoint_head(cfg, in_channels):
     return ROIKeypointHead(cfg, in_channels)

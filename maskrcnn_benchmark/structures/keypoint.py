@@ -159,6 +159,178 @@ def _create_flip_indices(names, flip_map):
 
 
 # TODO make this nicer, this is a direct translation from C2 (but removing the inner loop)
+def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
+    #print('keypionts heat map', keypoints[0], keypoints.shape)
+    #print('heatmap_size', heatmap_size)
+    #print('rois', rois, rois.shape)
+    if rois.numel() == 0:
+        return rois.new().long(), rois.new().long()
+
+
+    heatmaps = []
+    coord_heatmaps = []
+    valids = []
+    device = keypoints[0].keypoints.get_device()
+
+    #print('keypoints', keypoints)
+    for i, (roi, keypoint) in enumerate(zip(rois, keypoints)):
+        offset_x = roi[0]
+        offset_y = roi[1]
+        scale_x = heatmap_size / (roi[2] - roi[0])
+        scale_y = heatmap_size / (roi[3] - roi[1])
+
+        offset_x = offset_x[None]
+        offset_y = offset_y[None]
+        scale_x = scale_x[None]
+        scale_y = scale_y[None]
+
+        #print('kps', keypoints.shape)
+        #print('roi', roi)
+        #print('keypoint'#, keypoint)
+        keypoint = keypoint.keypoints
+        x = keypoint[..., 0]
+        #print('kp x', x)
+        #print('kp roi', roi[2][None])
+        y = keypoint[..., 1]
+        x_boundary_inds = x == roi[2][None]
+        y_boundary_inds = y == roi[3][None]
+        #print('bound x', x_boundary_inds)
+        #print('offset_x', offset_x)
+
+        x = (x - offset_x) * scale_x
+        #print('offset', x)
+        x = x.floor().long()
+        #print('floor', x)
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+
+        x[x_boundary_inds] = heatmap_size - 1
+        #print('edges', x)
+        y[y_boundary_inds] = heatmap_size - 1
+
+        valid_loc = (x >= 0) & (y >= 0) & (x < heatmap_size) & (y < heatmap_size)
+        vis = keypoint[..., 3] > 0
+        valid = (valid_loc & vis).long()
+        validb = valid.to(dtype=torch.bool)
+
+        lin_ind = y * heatmap_size + x
+        heatmap = lin_ind * valid
+        #print('kp heatmap', heatmap.shape)
+
+        # NOTE: start corners 0
+        coord_heatmap = torch.zeros([nclasses, heatmap_size ** 2], dtype=torch.float, device=device)
+        #print('0', coord_heatmap)
+        x = keypoint[..., 3]
+        y = keypoint[..., 4]
+        #print('x', x)
+        #print('roi', roi[2][None])
+        x_min_boundary_inds = x <= roi[0][None].ceil()
+        y_min_boundary_inds = y <= roi[1][None].ceil()
+        x_max_boundary_inds = x >= roi[2][None].floor()
+        y_max_boundary_inds = y >= roi[3][None].floor()
+
+        #print('x bound', x_boundary_inds)
+
+        x = (x - offset_x) * scale_x
+        x = x.floor().long()
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+
+        #print('x offset', x)
+        x[x_min_boundary_inds] = 0
+        y[y_min_boundary_inds] = 0
+        x[x_max_boundary_inds] = heatmap_size - 1
+        y[y_max_boundary_inds] = heatmap_size - 1
+        lin_ind = y * heatmap_size + x
+        print('lin', lin_ind[validb])
+        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+
+        # NOTE: corner 1
+        x = keypoint[..., 5]
+        y = keypoint[..., 6]
+        x_min_boundary_inds = x <= roi[0][None].ceil()
+        y_min_boundary_inds = y <= roi[1][None].ceil()
+        x_max_boundary_inds = x >= roi[2][None].floor()
+        y_max_boundary_inds = y >= roi[3][None].floor()
+
+        x = (x - offset_x) * scale_x
+        x = x.floor().long()
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+
+        x[x_min_boundary_inds] = 0
+        y[y_min_boundary_inds] = 0
+        x[x_max_boundary_inds] = heatmap_size - 1
+        y[y_max_boundary_inds] = heatmap_size - 1
+        lin_ind = y * heatmap_size + x
+        print('lin', lin_ind[validb])
+        #coord_heatmap[validb][lin_ind[validb]] = 1
+        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        #print('2', coord_heatmap)
+
+        # NOTE: corner 2
+        x = keypoint[..., 7]
+        y = keypoint[..., 8]
+        x_min_boundary_inds = x <= roi[0][None].ceil()
+        y_min_boundary_inds = y <= roi[1][None].ceil()
+        x_max_boundary_inds = x >= roi[2][None].floor()
+        y_max_boundary_inds = y >= roi[3][None].floor()
+
+        x = (x - offset_x) * scale_x
+        x = x.floor().long()
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+
+        x[x_min_boundary_inds] = 0
+        y[y_min_boundary_inds] = 0
+        x[x_max_boundary_inds] = heatmap_size - 1
+        y[y_max_boundary_inds] = heatmap_size - 1
+        lin_ind = y * heatmap_size + x
+        print('lin', lin_ind[validb])
+        #coord_heatmap[validb][lin_ind[validb]] = 1
+        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        #print('3', coord_heatmap)
+
+
+        # NOTE: corner 3
+        x = keypoint[..., 9]
+        y = keypoint[..., 10]
+        x_min_boundary_inds = x <= roi[0][None].ceil()
+        y_min_boundary_inds = y <= roi[1][None].ceil()
+        x_max_boundary_inds = x >= roi[2][None].floor()
+        y_max_boundary_inds = y >= roi[3][None].floor()
+
+        x = (x - offset_x) * scale_x
+        x = x.floor().long()
+        y = (y - offset_y) * scale_y
+        y = y.floor().long()
+
+        x[x_min_boundary_inds] = 0
+        y[y_min_boundary_inds] = 0
+        x[x_max_boundary_inds] = heatmap_size - 1
+        y[y_max_boundary_inds] = heatmap_size - 1
+        lin_ind = y * heatmap_size + x
+        print('lin', lin_ind[validb])
+        #coord_heatmap[validb][lin_ind[validb]] = 1
+        coord_heatmap[validb].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+        #print('4', coord_heatmap)
+
+        #print('coord', coord_heatmap.shape)
+
+        coord_heatmaps.append(coord_heatmap)
+        heatmaps.append(heatmap)
+        valids.append(valid)
+    coord_heatmaps = cat(coord_heatmaps)
+    heatmaps = cat(heatmaps)
+    valids = cat(valids)
+    #print('heatmaps', heatmaps, heatmaps.shape)
+    #print('valid', valids, valids.shape)
+    #print('coords', coord_heatmaps.shape)
+
+    return heatmaps, coord_heatmaps, valids
+
+
+# TODO make this nicer, this is a direct translation from C2 (but removing the inner loop)
 def keypoints_to_heat_map(keypoints, rois, heatmap_size):
     #print('keypionts heat map', keypoints[0], keypoints.shape)
     #print('heatmap_size', heatmap_size)
