@@ -159,7 +159,7 @@ class KeypointRCNNLossComputation(object):
         valid = []
         valid_one_hot = []
         coord_heatmaps = []
-        print('logits', keypoint_logits.shape)
+        #print('logits', keypoint_logits.shape)
         N, K, H, W = keypoint_logits.shape
         #print('kp_logits', keypoint_logits.shape)
         #print('obj_ogits', obj_logits.shape)
@@ -173,17 +173,27 @@ class KeypointRCNNLossComputation(object):
                 kp, proposals_per_image, self.discretization_size, K
             )
 
+            #print(heatmaps_per_image.shape)
+            #for ix, a in enumerate(heatmaps_per_image):
+            #    show = None
+            #    show = cv2.normalize(a[3].cpu().detach().numpy(), show, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            #    show = cv2.applyColorMap(show, cv2.COLORMAP_JET)
+            #    cv2.imwrite("{}.jpg".format(ix), show)
+
+            #print('hpi', coord_heatmaps_per_image.shape)
+
             #print('valid per image', valid_per_image)
             heatmaps.append(heatmaps_per_image.view(-1))
             valid.append(valid_per_image.view(-1))
             valid_one_hot.append(valid_per_image.view(-1))
-            coord_heatmaps.append(coord_heatmaps_per_image.view(-1))
+            coord_heatmaps.append(coord_heatmaps_per_image)
 
         keypoint_targets = cat(heatmaps, dim=0)
         valid = cat(valid, dim=0).to(dtype=torch.bool)
         valid_one_hot = cat(valid_one_hot, dim=0)
         coord_targets = cat(coord_heatmaps, dim=0)
-        print('coords_targets', coord_targets.shape)
+        #print('keypoint_targets', keypoint_targets.shape)
+        #print('coord_targets', coord_targets.shape)
         #print('valid', valid, valid.shape)
         valid = torch.nonzero(valid).squeeze(1)
         #print('valid', valid, valid.shape)
@@ -195,16 +205,41 @@ class KeypointRCNNLossComputation(object):
 
         keypoint_logits = keypoint_logits.view(N * K, H * W)
         obj_logits = obj_logits.view(N * K, -1)
-        coord_activations = torch.sigmoid(coord_logits.view(N * K, 4, H * W))
-        print('cact', coord_activations.shape)
+        #print('coord logits', coord_logits.shape)
+        coord_logits = coord_logits.view(N * K, 4, H * W)
 
         #print('kp_logits', keypoint_logits.shape)
         #print('obj_ogits', obj_logits.shape)
         #print('coord_logits', coord_logits.shape)
+        #print('p', coord_logits.shape)
+        #print('t', coord_targets.shape)
+        #print('valid', valid)
+        #print(coord_logits[valid].shape)
+        #print(coord_targets[valid].shape)
+        coord_targets = coord_targets[valid].view(-1)
+        #print('t', coord_targets.shape)
+        nrows = coord_targets.shape[0]
+        #print('nrows', nrows)
+        coord_logits = coord_logits[valid].view(nrows, -1)
+        #print('p', coord_logits.shape)
+        #vtest = valid[:1]
+        #val, idx = coord_targets[vtest].max(dim=0)
+        #print('act', F.softmax(coord_activations[vtest], 1))
+        #print('act', F.softmax(coord_activations[vtest], 1).max(1))
+        #print('valid', coord_activations[valid].shape)
+        #print('vtest', vtest)
+        #print('axs', val, idx)
+        #print('tar', coord_targets[vtest])
+        #print('key', keypoint_targets[valid])
+        #print(coord_activations[valid].shape, coord_targets[valid].shape)
+        #sys.exit()
+        #print(coord_activations[valid])
+        #print(coord_targets[valid])
 
         objectness_loss = F.cross_entropy(obj_logits, valid_one_hot)
         keypoint_loss = F.cross_entropy(keypoint_logits[valid], keypoint_targets[valid])
-        coord_loss = F.binary_cross_entropy(coord_activations, coord_targets)
+        coord_loss = F.cross_entropy(coord_logits, coord_targets)
+        #coord_loss = F.binary_cross_entropy(coord_activations, coord_targets)
         return keypoint_loss, objectness_loss, coord_loss
 
 

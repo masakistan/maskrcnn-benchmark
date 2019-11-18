@@ -9,6 +9,7 @@ from maskrcnn_benchmark.structures.image_list import to_image_list
 from maskrcnn_benchmark.modeling.roi_heads.mask_head.inference import Masker
 from maskrcnn_benchmark import layers as L
 from maskrcnn_benchmark.utils import cv2_util
+torch.set_printoptions(profile="full")
 
 class Resize(object):
     def __init__(self, min_size, max_size):
@@ -361,9 +362,14 @@ class COCODemo(object):
         scores = keypoints.get_field("logits")
         probs = predictions.get_field("keypoint_probs")
         prob_idxs = predictions.get_field("keypoint_prob_idxs")
-        print('probs', probs)
-        print('idxs', prob_idxs)
-        kps = torch.cat((kps[:, :, 0:2], scores[:, :, None]), dim=2).numpy()
+        #print('probs', probs)
+        #print('idxs', prob_idxs)
+        #print('kps', kps, kps.shape)
+        kps = torch.unsqueeze(kps, 0)
+        #print('kps', kps.shape)
+        #print('scores', scores.shape)
+        kps = torch.cat((kps[:, :, 0:2], kps[:, :, 3:11], scores[:, :, None]), dim=2).numpy()
+        #print('new kps', kps, kps.shape)
         for region in kps:
             image = vis_keypoints(image, region.transpose((1, 0)), scores)
         return image
@@ -450,23 +456,58 @@ def vis_keypoints(img, kps, scores, kp_thresh=2, alpha=0.7):
     kp_mask = np.copy(img)
 
     # Draw the keypoints.
-    print('kps:', kps)
-    print('scores:', scores)
+    #print('kps:', kps.shape)
+    #print('scores:', scores)
+
     for l in range(len(kp_lines)):
         i1 = kp_lines[l][0] - 1
         i2 = kp_lines[l][1] - 1
         p1 = kps[0, i1], kps[1, i1]
+        p1c1 = kps[2, i1], kps[3, i1]
+        p1c2 = kps[4, i1], kps[5, i1]
+        p1c3 = kps[6, i1], kps[7, i1]
+        p1c4 = kps[8, i1], kps[9, i1]
+        
         p2 = kps[0, i2], kps[1, i2]
-        print('points', p1, p2)
+        p2c1 = kps[2, i2], kps[3, i2]
+        p2c2 = kps[4, i2], kps[5, i2]
+        p2c3 = kps[6, i2], kps[7, i2]
+        p2c4 = kps[8, i2], kps[9, i2]
+        #print('point', p1)
+        #print('\t', p1c1, p1c2, p1c3, p1c4)
         if kps[2, i1] > kp_thresh and kps[2, i2] > kp_thresh:
             cv2.line(
                 kp_mask, p1, p2,
                 color=colors[l], thickness=2, lineType=cv2.LINE_AA)
         if kps[2, i1] > kp_thresh:
             cv2.circle(
+                kp_mask, p1c1,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p1c2,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p1c3,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p1c4,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
                 kp_mask, p1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
         if kps[2, i2] > kp_thresh:
+            cv2.circle(
+                kp_mask, p2c1,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p2c2,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p2c3,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                kp_mask, p2c4,
+                radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
             cv2.circle(
                 kp_mask, p2,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)

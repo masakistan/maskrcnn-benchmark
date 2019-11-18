@@ -147,7 +147,7 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
 
                 offsets.append(offsets[i - 1] + len(padded_keypoint) // 11)
                 keypoints.append(padded_keypoint)
-                
+
             target.add_field("keypoints", Keypoints(keypoints, img.size, offsets))
 
         target = target.clip_to_image(remove_empty=True)

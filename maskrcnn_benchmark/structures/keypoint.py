@@ -9,7 +9,7 @@ FLIP_TOP_BOTTOM = 1
 
 
 class Keypoints(object):
-    def __init__(self, keypoints, size, offsets, mode=None):
+    def __init__(self, keypoints, size, offsets, mode=None, keypoint_dims=11):
         # FIXME remove check once we have better integration with device
         # in my version this would consistently return a CPU tensor
         #print(keypoints)
@@ -23,21 +23,18 @@ class Keypoints(object):
         
         self.offsets = offsets
         num_keypoints = keypoints.shape[0]
-        #print("num keypoints", num_keypoints)
-        #print("keypoints shape", keypoints.shape)
         if num_keypoints:
-            keypoints = keypoints.view(-1, 11)
-        #print('loaded keypoints', keypoints.shape)
-        #assert keypoints.shape[0] + 1 == len(offsets), "Keypoints and offsets oar of different length {} {}".format(keypoints.shape[0], len(offsets))
+            keypoints = keypoints.view(-1, keypoint_dims)
         
         # TODO should I split them?
         # self.visibility = keypoints[..., 2]
         self.keypoints = keypoints# [..., :2]
-        #print("self keypoints", self.keypoints.shape)
+        #print("self keypoints", keypoints, self.keypoints.shape)
 
         self.size = size
         self.mode = mode
         self.extra_fields = {}
+        self.keypoint_dims = keypoint_dims
 
     def crop(self, box):
         raise NotImplementedError()
@@ -52,25 +49,30 @@ class Keypoints(object):
         #print('w before', resized_data[..., 0])
         #print('w before', resized_data[..., 1])
         resized_data[..., 0] *= ratio_w
-        resized_data[..., 3] *= ratio_w
-        resized_data[..., 5] *= ratio_w
-        resized_data[..., 7] *= ratio_w
-        resized_data[..., 9] *= ratio_w
-        
         resized_data[..., 1] *= ratio_h
-        resized_data[..., 4] *= ratio_w
-        resized_data[..., 6] *= ratio_w
-        resized_data[..., 8] *= ratio_w
-        resized_data[..., 10] *= ratio_w
 
+        if self.keypoint_dims > 3:
+            resized_data[..., 3] *= ratio_w
+            resized_data[..., 5] *= ratio_w
+            resized_data[..., 7] *= ratio_w
+            resized_data[..., 9] *= ratio_w
+            resized_data[..., 4] *= ratio_h
+            resized_data[..., 6] *= ratio_h
+            resized_data[..., 8] *= ratio_h
+            resized_data[..., 10] *= ratio_h
+
+ 
         #print('w after', resized_data[..., 0])
         #print('w after', resized_data[..., 1])
         keypoints = type(self)(resized_data, size, self.offsets, self.mode)
         for k, v in self.extra_fields.items():
             keypoints.add_field(k, v)
+
+        #print('resized', keypoints.keypoints)
         return keypoints
 
     def transpose(self, method):
+        print('trasnposing!!!!!!!!!!!!!!!!!!!!')
         if method not in (FLIP_LEFT_RIGHT,):
             raise NotImplementedError(
                     "Only FLIP_LEFT_RIGHT implemented")
@@ -92,7 +94,7 @@ class Keypoints(object):
         return keypoints
 
     def to(self, *args, **kwargs):
-        keypoints = type(self)(self.keypoints.to(*args, **kwargs), self.size, self.offsets, self.mode)
+        keypoints = type(self)(self.keypoints.to(*args, **kwargs), self.size, self.offsets, self.mode, keypoint_dims=self.keypoint_dims)
         for k, v in self.extra_fields.items():
             if hasattr(v, "to"):
                 v = v.to(*args, **kwargs)
@@ -184,149 +186,61 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
         scale_x = scale_x[None]
         scale_y = scale_y[None]
 
-        #print('kps', keypoints.shape)
-        #print('roi', roi)
-        #print('keypoint'#, keypoint)
         keypoint = keypoint.keypoints
         x = keypoint[..., 0]
-        #print('kp x', x)
-        #print('kp roi', roi[2][None])
         y = keypoint[..., 1]
         x_boundary_inds = x == roi[2][None]
         y_boundary_inds = y == roi[3][None]
-        #print('bound x', x_boundary_inds)
-        #print('offset_x', offset_x)
 
         x = (x - offset_x) * scale_x
-        #print('offset', x)
         x = x.floor().long()
-        #print('floor', x)
         y = (y - offset_y) * scale_y
         y = y.floor().long()
 
         x[x_boundary_inds] = heatmap_size - 1
-        #print('edges', x)
         y[y_boundary_inds] = heatmap_size - 1
 
         valid_loc = (x >= 0) & (y >= 0) & (x < heatmap_size) & (y < heatmap_size)
-        vis = keypoint[..., 3] > 0
+        vis = keypoint[..., 2] > 0
         valid = (valid_loc & vis).long()
         validb = valid.to(dtype=torch.bool)
 
         lin_ind = y * heatmap_size + x
         heatmap = lin_ind * valid
-        #print('kp heatmap', heatmap.shape)
 
         # NOTE: start corners 0
-        coord_heatmap = torch.zeros([nclasses, 4, heatmap_size ** 2], dtype=torch.float, device=device)
-        #print('0', coord_heatmap)
-        x = keypoint[..., 3]
-        y = keypoint[..., 4]
-        #print('x', x)
-        #print('roi', roi[2][None])
-        x_min_boundary_inds = x <= roi[0][None].ceil()
-        y_min_boundary_inds = y <= roi[1][None].ceil()
-        x_max_boundary_inds = x >= roi[2][None].floor()
-        y_max_boundary_inds = y >= roi[3][None].floor()
+        coord_heatmap = []
 
-        #print('x bound', x_boundary_inds)
+        for idx, (ix1, ix2) in enumerate([(3, 4), (5, 6), (7, 8), (9, 10)]):
+            x = keypoint[..., ix1]
+            y = keypoint[..., ix2]
+            x_min_boundary_inds = x <= roi[0][None].ceil()
+            y_min_boundary_inds = y <= roi[1][None].ceil()
+            x_max_boundary_inds = x >= roi[2][None].floor()
+            y_max_boundary_inds = y >= roi[3][None].floor()
 
-        x = (x - offset_x) * scale_x
-        x = x.floor().long()
-        y = (y - offset_y) * scale_y
-        y = y.floor().long()
+            x = (x - offset_x) * scale_x
+            x = x.floor().long()
+            y = (y - offset_y) * scale_y
+            y = y.floor().long()
 
-        #print('x offset', x)
-        x[x_min_boundary_inds] = 0
-        y[y_min_boundary_inds] = 0
-        x[x_max_boundary_inds] = heatmap_size - 1
-        y[y_max_boundary_inds] = heatmap_size - 1
-        lin_ind = y * heatmap_size + x
-        print('lin', lin_ind[validb])
-        print(coord_heatmap[validb][:,0].shape)
-        coord_heatmap[validb][:,0].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
+            x[x_min_boundary_inds] = 0
+            y[y_min_boundary_inds] = 0
+            x[x_max_boundary_inds] = heatmap_size - 1
+            y[y_max_boundary_inds] = heatmap_size - 1
+            lin_ind = y * heatmap_size + x
+            coord_heatmap.append(torch.unsqueeze(lin_ind * valid, 0))
+            #print(idx, coord_heatmap[-1].shape)
 
-        # NOTE: corner 1
-        x = keypoint[..., 5]
-        y = keypoint[..., 6]
-        x_min_boundary_inds = x <= roi[0][None].ceil()
-        y_min_boundary_inds = y <= roi[1][None].ceil()
-        x_max_boundary_inds = x >= roi[2][None].floor()
-        y_max_boundary_inds = y >= roi[3][None].floor()
-
-        x = (x - offset_x) * scale_x
-        x = x.floor().long()
-        y = (y - offset_y) * scale_y
-        y = y.floor().long()
-
-        x[x_min_boundary_inds] = 0
-        y[y_min_boundary_inds] = 0
-        x[x_max_boundary_inds] = heatmap_size - 1
-        y[y_max_boundary_inds] = heatmap_size - 1
-        lin_ind = y * heatmap_size + x
-        print('lin', lin_ind[validb])
-        #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb][:,1].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
-        #print('2', coord_heatmap)
-
-        # NOTE: corner 2
-        x = keypoint[..., 7]
-        y = keypoint[..., 8]
-        x_min_boundary_inds = x <= roi[0][None].ceil()
-        y_min_boundary_inds = y <= roi[1][None].ceil()
-        x_max_boundary_inds = x >= roi[2][None].floor()
-        y_max_boundary_inds = y >= roi[3][None].floor()
-
-        x = (x - offset_x) * scale_x
-        x = x.floor().long()
-        y = (y - offset_y) * scale_y
-        y = y.floor().long()
-
-        x[x_min_boundary_inds] = 0
-        y[y_min_boundary_inds] = 0
-        x[x_max_boundary_inds] = heatmap_size - 1
-        y[y_max_boundary_inds] = heatmap_size - 1
-        lin_ind = y * heatmap_size + x
-        print('lin', lin_ind[validb])
-        #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb][:,2].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
-        #print('3', coord_heatmap)
-
-
-        # NOTE: corner 3
-        x = keypoint[..., 9]
-        y = keypoint[..., 10]
-        x_min_boundary_inds = x <= roi[0][None].ceil()
-        y_min_boundary_inds = y <= roi[1][None].ceil()
-        x_max_boundary_inds = x >= roi[2][None].floor()
-        y_max_boundary_inds = y >= roi[3][None].floor()
-
-        x = (x - offset_x) * scale_x
-        x = x.floor().long()
-        y = (y - offset_y) * scale_y
-        y = y.floor().long()
-
-        x[x_min_boundary_inds] = 0
-        y[y_min_boundary_inds] = 0
-        x[x_max_boundary_inds] = heatmap_size - 1
-        y[y_max_boundary_inds] = heatmap_size - 1
-        lin_ind = y * heatmap_size + x
-        print('lin', lin_ind[validb])
-        #coord_heatmap[validb][lin_ind[validb]] = 1
-        coord_heatmap[validb][:,3].scatter_(1, torch.unsqueeze(lin_ind[validb], 1), 1)
-        #print('4', coord_heatmap)
-
-        #print('coord', coord_heatmap.shape)
-
-        coord_heatmaps.append(coord_heatmap)
+        coord_heatmaps.append(cat(coord_heatmap, dim=0))
+        #print('concat', coord_heatmaps[-1].shape)
         heatmaps.append(heatmap)
         valids.append(valid)
-    coord_heatmaps = cat(coord_heatmaps)
+    coord_heatmaps = torch.t(cat(coord_heatmaps, dim=1))
+    #print('end', coord_heatmaps.shape)
     heatmaps = cat(heatmaps)
+    #print('end2', heatmaps.shape)
     valids = cat(valids)
-    #print('heatmaps', heatmaps, heatmaps.shape)
-    #print('valid', valids, valids.shape)
-    #print('coords', coord_heatmaps.shape)
 
     return heatmaps, coord_heatmaps, valids
 
