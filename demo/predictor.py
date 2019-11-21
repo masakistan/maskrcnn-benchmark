@@ -136,7 +136,8 @@ class COCODemo(object):
         show_mask_heatmaps=False,
         masks_per_dim=2,
         min_image_size=224,
-        weight_loading = None
+        weight_loading = None,
+        obj_confidence_threshold=0.7    
     ):
         self.cfg = cfg.clone()
         self.model = build_detection_model(cfg)
@@ -164,6 +165,7 @@ class COCODemo(object):
 
         self.cpu_device = torch.device("cpu")
         self.confidence_threshold = confidence_threshold
+        self.obj_confidence_threshold = obj_confidence_threshold
         #print('confidence', self.confidence_threshold)
         self.show_mask_heatmaps = show_mask_heatmaps
         self.masks_per_dim = masks_per_dim
@@ -291,6 +293,10 @@ class COCODemo(object):
         predictions = predictions[keep]
         scores = predictions.get_field("scores")
         _, idx = scores.sort(0, descending=True)
+        if predictions.has_field("obj_probs"):
+            print('modify probs', predictions.get_field("obj_probs").shape)
+            predictions.add_field("obj_probs", predictions.get_field("obj_probs")[idx])
+            print('modify probs', predictions.get_field("obj_probs").shape)
         return predictions[idx]
 
     def compute_colors_for_labels(self, labels):
@@ -359,19 +365,22 @@ class COCODemo(object):
     def overlay_keypoints(self, image, predictions):
         keypoints = predictions.get_field("keypoints")
         kps = keypoints.keypoints
-        scores = keypoints.get_field("logits")
+        obj_probs = predictions.get_field("obj_probs")
         probs = predictions.get_field("keypoint_probs")
         prob_idxs = predictions.get_field("keypoint_prob_idxs")
+        print('squeeze', obj_probs.shape)
+        obj_probs = torch.squeeze(obj_probs, 0)
+        print('squeeze', obj_probs.shape)
         #print('probs', probs)
         #print('idxs', prob_idxs)
         #print('kps', kps, kps.shape)
         kps = torch.unsqueeze(kps, 0)
         #print('kps', kps.shape)
         #print('scores', scores.shape)
-        kps = torch.cat((kps[:, :, 0:2], kps[:, :, 3:11], scores[:, :, None]), dim=2).numpy()
+        kps = torch.cat((kps[:, :, 0:2], kps[:, :, 3:11]), dim=2).numpy()
         #print('new kps', kps, kps.shape)
         for region in kps:
-            image = vis_keypoints(image, region.transpose((1, 0)), scores)
+            image = vis_keypoints(image, region.transpose((1, 0)), obj_probs, self.obj_confidence_threshold)
         return image
 
     def create_mask_montage(self, image, predictions):
@@ -440,10 +449,13 @@ import matplotlib.pyplot as plt
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
 from maskrcnn_benchmark.structures.census_keypoint_names import keypoint_names, skeletons
 
-def vis_keypoints(img, kps, scores, kp_thresh=2, alpha=0.7):
+def vis_keypoints(img, kps, probs, obj_confidence_threshold, kp_thresh=2, alpha=0.7):
     """Visualizes keypoints (adapted from vis_one_image).
     kps has shape (4, #keypoints) where 4 rows are (x, y, logit, prob).
     """
+    print('probs', probs.shape)
+    print(kps.shape)
+    #kps = kps[probs > obj_confidence_threshold]
     dataset_keypoints = keypoint_names['name_col']
     kp_lines = skeletons['name_col']
 
@@ -475,11 +487,11 @@ def vis_keypoints(img, kps, scores, kp_thresh=2, alpha=0.7):
         p2c4 = kps[8, i2], kps[9, i2]
         #print('point', p1)
         #print('\t', p1c1, p1c2, p1c3, p1c4)
-        if kps[2, i1] > kp_thresh and kps[2, i2] > kp_thresh:
+        if probs[i1] > obj_confidence_threshold and probs[i2] > obj_confidence_threshold:
             cv2.line(
                 kp_mask, p1, p2,
                 color=colors[l], thickness=2, lineType=cv2.LINE_AA)
-        if kps[2, i1] > kp_thresh:
+        if probs[i1] > obj_confidence_threshold:
             cv2.circle(
                 kp_mask, p1c1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
@@ -495,7 +507,7 @@ def vis_keypoints(img, kps, scores, kp_thresh=2, alpha=0.7):
             cv2.circle(
                 kp_mask, p1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
-        if kps[2, i2] > kp_thresh:
+        if probs[i2] > obj_confidence_threshold:
             cv2.circle(
                 kp_mask, p2c1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)

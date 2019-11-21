@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from maskrcnn_benchmark.modeling.utils import cat
 
@@ -19,44 +20,53 @@ class KeypointPostProcessor(nn.Module):
         coord_logits = coord_logits.split(1, dim=2)
         #print('coord', coord_logits[0][0][0][0])
         #print('coord', coord_logits[0][0][1][0])
-        print('key', keypoint_logits.shape)
-        print('coo', [y.shape for y in coord_logits])
-        print('x', x.shape)
+        #print('key', keypoint_logits.shape)
+        #print('coo', [y.shape for y in coord_logits])
+        #print('x', x.shape)
 
         scores = None
         if self.keypointer:
-            print('keypointing')
+            #print('keypointing')
             mask_prob, scores = self.keypointer(x, boxes)
             corners = [self.keypointer(y.view(N, K, H, W), boxes) for y in coord_logits]
             #print([x[0][0] for x in corners])
             #print([x[0][...,:2] for x in corners])
             mask_prob = cat([mask_prob] + [x[0][...,:2] for x in corners], dim = 2)
-            print('new mask prob', mask_prob.shape, mask_prob[0][0], mask_prob[0][1])
+            #print('new mask prob', mask_prob.shape, mask_prob[0][0], mask_prob[0][1])
 
         #print('mask prob', mask_prob)
         assert len(boxes) == 1, "Only non-batched inference supported for now"
         boxes_per_image = [box.bbox.size(0) for box in boxes]
-        print('boxes per image', boxes_per_image)
-        print(mask_prob.shape)
+        print("boxes per img", boxes_per_image)
+        #print('boxes per image', boxes_per_image)
+        #print(mask_prob.shape)
         mask_prob = mask_prob.split(boxes_per_image, dim=0)
         scores = scores.split(boxes_per_image, dim=0)
-        print([x.shape for x in mask_prob])
+        #print([x.shape for x in mask_prob])
         #print([x[0].shape for x in corners])
         #corner_mask_prob = cat([x[0].shape])
+        obj_probs = F.softmax(obj_logits, dim=2)
+        print('obj probs', obj_probs.shape)
+        max_vals, max_idxs = obj_logits.max(dim=2)
+        visible = obj_probs[..., 1]
+        print('visible', visible.shape)
+        #print('obj logits', obj_logits, max_idxs)
+        #print(visible)
 
         results = []
         for prob, box, score in zip(mask_prob, boxes, scores):
             bbox = BoxList(box.bbox, box.size, mode="xyxy")
             for field in box.fields():
                 bbox.add_field(field, box.get_field(field))
-            print('prob', prob.shape)
+            #print('prob', prob.shape)
             prob = PersonKeypoints(prob, box.size, [0, K])
             prob.add_field("logits", score)
             bbox.add_field("keypoints", prob)
             bbox.add_field("keypoint_probs", keypoint_probs)
             bbox.add_field("keypoint_prob_idxs", keypoint_prob_idxs)
-            print("keypoint probs", keypoint_probs, keypoint_probs.shape)
-            print("keypoint idxs", keypoint_prob_idxs, keypoint_prob_idxs.shape)
+            bbox.add_field("obj_probs", visible)
+            #print("keypoint probs", keypoint_probs, keypoint_probs.shape)
+            #print("keypoint idxs", keypoint_prob_idxs, keypoint_prob_idxs.shape)
             results.append(bbox)
 
         return results
