@@ -52,14 +52,15 @@ class KeypointPostProcessor(nn.Module):
         print('visible', visible.shape)
         #print('obj logits', obj_logits, max_idxs)
         #print(visible)
+        print(visible > .7)
 
         results = []
         for prob, box, score in zip(mask_prob, boxes, scores):
             bbox = BoxList(box.bbox, box.size, mode="xyxy")
             for field in box.fields():
                 bbox.add_field(field, box.get_field(field))
-            #print('prob', prob.shape)
-            prob = PersonKeypoints(prob, box.size, [0, K])
+            print('\tprob', prob.shape, type(prob))
+            prob = Keypoints(prob, box.size)
             prob.add_field("logits", score)
             bbox.add_field("keypoints", prob)
             bbox.add_field("keypoint_probs", keypoint_probs)
@@ -99,7 +100,7 @@ def heatmaps_to_keypoints(maps, rois):
 
     # NCHW to NHWC for use with OpenCV
     maps = np.transpose(maps, [0, 2, 3, 1])
-    print('maps', maps.shape)
+    #print('maps', maps.shape)
     min_size = 0  # cfg.KRCNN.INFERENCE_MIN_SIZE
     num_keypoints = maps.shape[3]
     xy_preds = np.zeros((len(rois), 3, num_keypoints), dtype=np.float32)
@@ -118,23 +119,12 @@ def heatmaps_to_keypoints(maps, rois):
         )
         # Bring back to CHW
         roi_map = np.transpose(roi_map, [2, 0, 1])
-        # roi_map_probs = scores_to_probs(roi_map.copy())
-        print('roimap', roi_map.shape)
-        #for ix, a in enumerate(roi_map):
-        #    show = None
-        #    show = cv2.normalize(a, show, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        #    show = cv2.applyColorMap(show, cv2.COLORMAP_JET)
-        #    cv2.imwrite("{}.jpg".format(ix), show)
         w = roi_map.shape[2]
         pos = roi_map.reshape(num_keypoints, -1).argmax(axis=1)
-        print('pos:', pos, w)
+        #print('pos:', pos, w)
         x_int = pos % w
         y_int = (pos - x_int) // w
 
-        print(x_int)
-        print(y_int)
-        # assert (roi_map_probs[k, y_int, x_int] ==
-        #         roi_map_probs[k, :, :].max())
         x = (x_int + 0.5) * width_correction
         y = (y_int + 0.5) * height_correction
         xy_preds[i, 0, :] = x + offset_x[i]
@@ -147,6 +137,7 @@ def heatmaps_to_keypoints(maps, rois):
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
+from maskrcnn_benchmark.structures.keypoint import Keypoints
 
 
 class Keypointer(object):

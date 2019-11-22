@@ -9,7 +9,8 @@ FLIP_TOP_BOTTOM = 1
 
 
 class Keypoints(object):
-    def __init__(self, keypoints, size, offsets, mode=None, keypoint_dims=11):
+    def __init__(self, keypoints, size, offsets=None, mode=None, keypoint_dims=11):
+        #print('offsets', offsets)
         # FIXME remove check once we have better integration with device
         # in my version this would consistently return a CPU tensor
         #print(keypoints)
@@ -20,8 +21,14 @@ class Keypoints(object):
 
         #print(keypoints)
         keypoints = torch.as_tensor(keypoints, dtype=torch.float32, device=device)
-        
-        self.offsets = offsets
+
+        if offsets:
+            self.offsets = offsets
+        elif offsets is None and len(keypoints.shape) == 3:
+            N, C, P = keypoints.shape
+            self.offsets = [0] + [C * (i + 1) for i in range(N)]
+            #print('generated offsets', self.offsets)
+
         num_keypoints = keypoints.shape[0]
         if num_keypoints:
             keypoints = keypoints.view(-1, keypoint_dims)
@@ -111,6 +118,8 @@ class Keypoints(object):
             
         if isinstance(idxs, torch.BoolTensor) or isinstance(idxs, torch.cuda.BoolTensor):
             #print("getting bool")
+            #print(idxs, self.offsets)
+            #print([(self.offsets[i], self.offsets[i + 1]) for i, x in enumerate(idxs) if x])
             ret = cat([torch.arange(self.offsets[i], self.offsets[i + 1]) for i, x in enumerate(idxs) if x], dim=0)
             #new_offsets = [0] + [self.offsets[i + 1] - self.offsets[i] for i, x in enumerate(idxs) if x]
             #print('bool:', ret, new_offsets)
@@ -120,6 +129,7 @@ class Keypoints(object):
                     new_offsets.append(new_offsets[-1] + self.offsets[i + 1] - self.offsets[i])
         elif isinstance(idxs, list) or isinstance(idxs, torch.cuda.LongTensor) or isinstance(idxs, torch.LongTensor):
             #print("getting index")
+            #print(idxs, self.offsets)
             ret = cat([torch.arange(self.offsets[i], self.offsets[i + 1]) for i in idxs if i >= 0], dim=0)
             new_offsets = [0]
             for i in idxs:
@@ -202,8 +212,10 @@ def keypoints_to_heat_map_multi_point(keypoints, rois, heatmap_size, nclasses):
 
         valid_loc = (x >= 0) & (y >= 0) & (x < heatmap_size) & (y < heatmap_size)
         vis = keypoint[..., 2] > 0
+        #print('vis', vis)
         valid = (valid_loc & vis).long()
-        validb = valid.to(dtype=torch.bool)
+        #print(vis)
+        #print(valid)
 
         lin_ind = y * heatmap_size + x
         heatmap = lin_ind * valid

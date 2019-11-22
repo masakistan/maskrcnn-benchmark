@@ -1,3 +1,10 @@
+keypoint_offsets = {
+    'name_col': 0,
+    'occupation_col': 51,
+    'veteran_col': 152
+}
+
+
 keypoint_names = {
     'name_col': [
         "name_col_header",
@@ -15,11 +22,11 @@ keypoint_names = {
         "name_col_field_11",
         "name_col_field_12",
         "name_col_field_13",
-            "name_col_field_14",
+        "name_col_field_14",
         "name_col_field_15",
         "name_col_field_16",
         "name_col_field_17",
-            "name_col_field_18",
+        "name_col_field_18",
         "name_col_field_19",
         "name_col_field_20",
         "name_col_field_21",

@@ -75,10 +75,11 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
                 self.keypoints[cat['id']] = cat['keypoints']
                 self.skeletons[cat['id']] = cat['skeleton']
         self.n_kp_classes = cur_offset
-        print('n kp classes', self.n_kp_classes)
+        print('offsets', self.label_offsets)
+        #print('n kp classes', self.n_kp_classes)
 
-        print('kps offsets for labels', self.label_offsets)
-        print('cur offset', cur_offset)
+        #print('kps offsets for labels', self.label_offsets)
+        #print('cur offset', cur_offset)
         self.keypoint_formats = {
             'name_col': CensusNameColKeypoints,
             'occupation_col': CensusOccupationColKeypoints,
@@ -136,18 +137,23 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
                 #print(obj)
                 keypoint = obj["keypoints"]
                 cat_id = obj["category_id"]
-                #print('keypoint len', len(keypoint))
+                #print(cat_id, 'keypoint len', len(keypoint))
                 
                 padded_keypoint = [0] * self.n_kp_classes * 11
                 #print('padded len', len(padded_keypoint))
                 start, end = self.label_offsets[cat_id]
-                #print('start, end', start, end)
+                #print(idx, '\t', cat_id, 'start, end', start, end)
                 padded_keypoint[start * 11 : end * 11] = keypoint
                 #print(len(padded_keypoint))
 
-                offsets.append(offsets[i - 1] + len(padded_keypoint) // 11)
+                #print(i, 'off before', offsets)
+                offsets.append(offsets[-1] + len(padded_keypoint) // 11)
+                #print(i, 'off cur', offsets)
                 keypoints.append(padded_keypoint)
 
+            #print('offsets coco', offsets)
+            #print('labels', classes)
+            #print('keypoints', keypoints)
             target.add_field("keypoints", Keypoints(keypoints, img.size, offsets))
 
         target = target.clip_to_image(remove_empty=True)

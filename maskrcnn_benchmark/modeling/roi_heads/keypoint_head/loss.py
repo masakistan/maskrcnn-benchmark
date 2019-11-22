@@ -162,36 +162,34 @@ class KeypointRCNNLossComputation(object):
         #print('logits', keypoint_logits.shape)
         N, K, H, W = keypoint_logits.shape
         #print('kp_logits', keypoint_logits.shape)
-        #print('obj_ogits', obj_logits.shape)
         #print('coord_logits', coord_logits.shape)
         for proposals_per_image in proposals:
             kp = proposals_per_image.get_field("keypoints")
-            #print('kp', kp)
-            #print(kp.keypoints.shape)
-            #print(kp.keypoints[:,3:11].shape)
             heatmaps_per_image, coord_heatmaps_per_image, valid_per_image = project_keypoints_to_heatmap(
                 kp, proposals_per_image, self.discretization_size, K
             )
-
-            #print(heatmaps_per_image.shape)
-            #for ix, a in enumerate(heatmaps_per_image):
-            #    show = None
-            #    show = cv2.normalize(a[3].cpu().detach().numpy(), show, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-            #    show = cv2.applyColorMap(show, cv2.COLORMAP_JET)
-            #    cv2.imwrite("{}.jpg".format(ix), show)
-
-            #print('hpi', coord_heatmaps_per_image.shape)
 
             #print('valid per image', valid_per_image)
             heatmaps.append(heatmaps_per_image.view(-1))
             valid.append(valid_per_image.view(-1))
             valid_one_hot.append(valid_per_image.view(-1))
+            #print(valid_per_image)
             coord_heatmaps.append(coord_heatmaps_per_image)
 
+
+        #print('obj logits', obj_logits.shape)
+        #print('valid one hot', len(valid_one_hot))
+        for obj_logit, valids in zip(obj_logits, valid_one_hot):
+            #print("*" * 20)
+            act = F.softmax(obj_logit, 1)
+            vals, idxs = act.max(1)
+            #print('idxs', idxs)
+            #print('vals', valids)
         keypoint_targets = cat(heatmaps, dim=0)
         valid = cat(valid, dim=0).to(dtype=torch.bool)
         valid_one_hot = cat(valid_one_hot, dim=0)
         coord_targets = cat(coord_heatmaps, dim=0)
+        #print(valid_one_hot)
         #print('keypoint_targets', keypoint_targets.shape)
         #print('coord_targets', coord_targets.shape)
         #print('valid', valid, valid.shape)
@@ -210,6 +208,7 @@ class KeypointRCNNLossComputation(object):
 
         #print('kp_logits', keypoint_logits.shape)
         #print('obj_ogits', obj_logits.shape)
+        #print('valid one hot', valid_one_hot.shape)
         #print('coord_logits', coord_logits.shape)
         #print('p', coord_logits.shape)
         #print('t', coord_targets.shape)
@@ -221,6 +220,7 @@ class KeypointRCNNLossComputation(object):
         nrows = coord_targets.shape[0]
         #print('nrows', nrows)
         coord_logits = coord_logits[valid].view(nrows, -1)
+        #print(obj_logits)
         #print('p', coord_logits.shape)
         #vtest = valid[:1]
         #val, idx = coord_targets[vtest].max(dim=0)

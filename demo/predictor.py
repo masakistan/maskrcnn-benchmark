@@ -46,6 +46,19 @@ class Resize(object):
 class COCODemo(object):
     # COCO categories for pretty print
     CATEGORIES = [
+        "null",
+        "_background_",
+        "name_col_field",
+        "name_col_header",
+        "name_col",
+        "occupation_col_header",
+        "occupation_col_occupation_field",
+        "occupation_col_industry_field",
+        "occupation_col",
+        "veteran_col_header",
+        "veteran_col_yes_or_no",
+        "veteran_col_war_or_expedition",
+        "veteran_col",
         "medcert",
         "cod",
         "contrib",
@@ -288,15 +301,17 @@ class COCODemo(object):
                 the BoxList via `prediction.fields()`
         """
         scores = predictions.get_field("scores")
+        print('scores', scores)
         #print(scores, scores > self.confidence_threshold)
         keep = torch.nonzero(scores > self.confidence_threshold).squeeze(1)
+        print('keep', keep)
         predictions = predictions[keep]
         scores = predictions.get_field("scores")
         _, idx = scores.sort(0, descending=True)
-        if predictions.has_field("obj_probs"):
-            print('modify probs', predictions.get_field("obj_probs").shape)
-            predictions.add_field("obj_probs", predictions.get_field("obj_probs")[idx])
-            print('modify probs', predictions.get_field("obj_probs").shape)
+        #if predictions.has_field("obj_probs"):
+            #print('modify probs', predictions.get_field("obj_probs").shape)
+            #predictions.add_field("obj_probs", predictions.get_field("obj_probs")[idx])
+            #print('modify probs', predictions.get_field("obj_probs").shape)
         return predictions[idx]
 
     def compute_colors_for_labels(self, labels):
@@ -364,23 +379,32 @@ class COCODemo(object):
 
     def overlay_keypoints(self, image, predictions):
         keypoints = predictions.get_field("keypoints")
+        labels = predictions.get_field("labels")
+        print('labels', labels)
+        #print('keypoints', keypoints)
         kps = keypoints.keypoints
+        #print('all kps', kps.shape)
         obj_probs = predictions.get_field("obj_probs")
         probs = predictions.get_field("keypoint_probs")
         prob_idxs = predictions.get_field("keypoint_prob_idxs")
-        print('squeeze', obj_probs.shape)
-        obj_probs = torch.squeeze(obj_probs, 0)
-        print('squeeze', obj_probs.shape)
+        #print('squeeze', obj_probs.shape)
+        print('obj probs', obj_probs.shape)
+        #obj_probs = torch.squeeze(obj_probs, 0)
+        print('obj probs', obj_probs.shape)
+        #print('squeeze', obj_probs.shape)
         #print('probs', probs)
         #print('idxs', prob_idxs)
         #print('kps', kps, kps.shape)
-        kps = torch.unsqueeze(kps, 0)
-        #print('kps', kps.shape)
         #print('scores', scores.shape)
-        kps = torch.cat((kps[:, :, 0:2], kps[:, :, 3:11]), dim=2).numpy()
-        #print('new kps', kps, kps.shape)
-        for region in kps:
-            image = vis_keypoints(image, region.transpose((1, 0)), obj_probs, self.obj_confidence_threshold)
+        for i, (region, scores, label) in enumerate(zip(keypoints, obj_probs, labels)):
+            kps = region.keypoints
+            print('\t', scores)
+            #print('orig kps', kps.shape, scores.shape)
+            #print('\t', i, kps.shape)
+            #kps = torch.unsqueeze(kps, 0)
+            kps = torch.cat((kps[:, 0:2], kps[:, 3:11]), dim=1).numpy()
+            #print('kps', kps.shape)
+            image = vis_keypoints(image, kps.transpose((1, 0)), scores, self.obj_confidence_threshold, label)
         return image
 
     def create_mask_montage(self, image, predictions):
@@ -447,17 +471,22 @@ class COCODemo(object):
 import numpy as np
 import matplotlib.pyplot as plt
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
-from maskrcnn_benchmark.structures.census_keypoint_names import keypoint_names, skeletons
+from maskrcnn_benchmark.structures.census_keypoint_names import keypoint_names, skeletons, keypoint_offsets
 
-def vis_keypoints(img, kps, probs, obj_confidence_threshold, kp_thresh=2, alpha=0.7):
+def vis_keypoints(img, kps, probs, obj_confidence_threshold, label, kp_thresh=2, alpha=0.7):
     """Visualizes keypoints (adapted from vis_one_image).
     kps has shape (4, #keypoints) where 4 rows are (x, y, logit, prob).
     """
-    print('probs', probs.shape)
+    label = COCODemo.CATEGORIES[label]
+    print('vis object type:', label)
+    print('vis probs', probs)
     print(kps.shape)
     #kps = kps[probs > obj_confidence_threshold]
-    dataset_keypoints = keypoint_names['name_col']
-    kp_lines = skeletons['name_col']
+    dataset_keypoints = keypoint_names[label]
+    kp_lines = skeletons[label]
+    offset = keypoint_offsets[label]
+    print('vis offset', offset)
+    print(kp_lines)
 
     # Convert from plt 0-1 RGBA colors to 0-255 BGR colors for opencv.
     cmap = plt.get_cmap('rainbow')
@@ -472,8 +501,8 @@ def vis_keypoints(img, kps, probs, obj_confidence_threshold, kp_thresh=2, alpha=
     #print('scores:', scores)
 
     for l in range(len(kp_lines)):
-        i1 = kp_lines[l][0] - 1
-        i2 = kp_lines[l][1] - 1
+        i1 = kp_lines[l][0] - 1 + offset
+        i2 = kp_lines[l][1] - 1 + offset
         p1 = kps[0, i1], kps[1, i1]
         p1c1 = kps[2, i1], kps[3, i1]
         p1c2 = kps[4, i1], kps[5, i1]
@@ -485,13 +514,37 @@ def vis_keypoints(img, kps, probs, obj_confidence_threshold, kp_thresh=2, alpha=
         p2c2 = kps[4, i2], kps[5, i2]
         p2c3 = kps[6, i2], kps[7, i2]
         p2c4 = kps[8, i2], kps[9, i2]
+
+        print('\t', l)
+        print('\t\t', i1)
+        print('\t\t\t', p1)
+        print('\t\t\t', probs[i1])
+        print('\t\t', i2)
+        print('\t\t\t', p2)
+        print('\t\t\t', probs[i2])
+         
+        
         #print('point', p1)
         #print('\t', p1c1, p1c2, p1c3, p1c4)
         if probs[i1] > obj_confidence_threshold and probs[i2] > obj_confidence_threshold:
             cv2.line(
                 kp_mask, p1, p2,
                 color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            
         if probs[i1] > obj_confidence_threshold:
+            cv2.line(
+                kp_mask, p1c1, p1c2,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p1c2, p1c3,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p1c3, p1c4,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p1c4, p1c1,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            
             cv2.circle(
                 kp_mask, p1c1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
@@ -508,6 +561,19 @@ def vis_keypoints(img, kps, probs, obj_confidence_threshold, kp_thresh=2, alpha=
                 kp_mask, p1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
         if probs[i2] > obj_confidence_threshold:
+            cv2.line(
+                kp_mask, p2c1, p2c2,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p2c2, p2c3,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p2c3, p2c4,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+            cv2.line(
+                kp_mask, p2c4, p2c1,
+                color=colors[l], thickness=2, lineType=cv2.LINE_AA)
+
             cv2.circle(
                 kp_mask, p2c1,
                 radius=6, color=colors[l], thickness=-1, lineType=cv2.LINE_AA)
